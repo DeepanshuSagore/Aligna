@@ -9,7 +9,7 @@ export interface Candidate {
   name: string;
   role: string;
   skills: string[];
-  years_experience: parseInt;
+  years_experience: number;
   city: string;
   remote_preference: string;
   expected_salary: string;
@@ -23,9 +23,10 @@ export interface Candidate {
 interface CandidateListProps {
   candidates: Candidate[];
   onEngage: (candidate: Candidate) => void;
+  engagedIds?: Set<string>;
 }
 
-export function CandidateList({ candidates, onEngage }: CandidateListProps) {
+export function CandidateList({ candidates, onEngage, engagedIds }: CandidateListProps) {
   const [includeAIReason, setIncludeAIReason] = useState(false);
 
   if (!candidates || candidates.length === 0) return null;
@@ -171,13 +172,19 @@ export function CandidateList({ candidates, onEngage }: CandidateListProps) {
 
             {/* Actions */}
             <div className="flex-shrink-0 w-full md:w-auto mt-4 md:mt-0 flex flex-col items-center justify-center">
-              <button 
-                onClick={() => onEngage(candidate)}
-                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-white/5 border border-white/10 text-white font-medium rounded-xl hover:bg-white transition-colors group-hover:bg-white group-hover:text-black group-hover:border-transparent"
-              >
-                <span>Engage</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
+              {engagedIds?.has(candidate.id) ? (
+                <div className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-[#5AE14C]/10 border border-[#5AE14C]/30 text-[#5AE14C] font-medium rounded-xl">
+                  <span>✓ Engaged</span>
+                </div>
+              ) : (
+                <button 
+                  onClick={() => onEngage(candidate)}
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-white/5 border border-white/10 text-white font-medium rounded-xl hover:bg-white transition-colors group-hover:bg-white group-hover:text-black group-hover:border-transparent"
+                >
+                  <span>Engage</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
               <span className="text-[10px] text-white/50 mt-2 uppercase tracking-widest hidden md:block text-center">
                 AI Outreach
               </span>

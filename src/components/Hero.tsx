@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { Sparkles, Zap } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Sparkles, Zap, Users } from "lucide-react";
 import { JDInputCard } from "./JDInputCard";
 import { FeatureCards } from "./FeatureCards";
 import { JDResults, type JDData } from "./JDResults";
 import { CandidateList, type Candidate } from "./CandidateList";
 import { EngagementModal } from "./EngagementModal";
+import { PipelineSteps, type PipelineStep } from "./PipelineSteps";
+import { RankedShortlist, type EngagedCandidate } from "./RankedShortlist";
 
 export function Hero() {
   const [isLoading, setIsLoading] = useState(false);
@@ -15,10 +17,20 @@ export function Hero() {
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [pipelineStep, setPipelineStep] = useState<PipelineStep>("idle");
+
+  // Track engaged candidates with their scores
+  const [engagedCandidates, setEngagedCandidates] = useState<Map<string, EngagedCandidate>>(new Map());
+  const [isEngagingAll, setIsEngagingAll] = useState(false);
+  const [engageProgress, setEngageProgress] = useState({ current: 0, total: 0 });
+  const [showRankedShortlist, setShowRankedShortlist] = useState(false);
 
   const handleAnalyzeText = async (jdText: string) => {
     setIsLoading(true);
     setJdData(null);
+    setPipelineStep("parsing");
+    setEngagedCandidates(new Map());
+    setShowRankedShortlist(false);
     try {
       const res = await fetch("http://localhost:8000/parse-jd", {
         method: "POST",
@@ -38,6 +50,7 @@ export function Hero() {
       await handleFindMatches(data);
     } catch (error) {
       console.error(error);
+      setPipelineStep("idle");
       alert("Failed to analyze the Job Description. Make sure the backend is running and you have a valid Gemini API key configured.");
     } finally {
       setIsLoading(false);
@@ -47,6 +60,9 @@ export function Hero() {
   const handleAnalyzeFile = async (file: File) => {
     setIsLoading(true);
     setJdData(null);
+    setPipelineStep("parsing");
+    setEngagedCandidates(new Map());
+    setShowRankedShortlist(false);
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -66,6 +82,7 @@ export function Hero() {
       await handleFindMatches(data);
     } catch (error) {
       console.error(error);
+      setPipelineStep("idle");
       alert("Failed to analyze the PDF. Make sure the backend is running and you uploaded a valid PDF.");
     } finally {
       setIsLoading(false);
@@ -75,6 +92,7 @@ export function Hero() {
   const handleFindMatches = async (dataToMatch: JDData) => {
     if (!dataToMatch) return;
     setIsMatching(true);
+    setPipelineStep("matching");
     try {
       const res = await fetch("http://localhost:8000/match-candidates", {
         method: "POST",
@@ -90,6 +108,7 @@ export function Hero() {
 
       const data = await res.json();
       setCandidates(data.candidates);
+      setPipelineStep("matching"); // Stay on matching step until engagement begins
     } catch (error) {
       console.error(error);
       alert("Failed to find matches. Make sure backend is running and mock_candidates.json exists.");
@@ -103,22 +122,170 @@ export function Hero() {
     setIsModalOpen(true);
   };
 
+  const handleEngagementComplete = useCallback((candidateId: string, result: {
+    interest_score: number;
+    final_score: number;
+    chat_logs: { sender: string; message: string }[];
+  }) => {
+    if (!candidates) return;
+    const candidate = candidates.find(c => c.id === candidateId);
+    if (!candidate) return;
+
+    setEngagedCandidates(prev => {
+      const newMap = new Map(prev);
+      newMap.set(candidateId, {
+        ...candidate,
+        interest_score: result.interest_score,
+        final_score: result.final_score,
+        chat_logs: result.chat_logs,
+      });
+      return newMap;
+    });
+  }, [candidates]);
+
+  const handleEngageAll = async () => {
+    if (!candidates || !jdData) return;
+    setIsEngagingAll(true);
+    setPipelineStep("engaging");
+    setEngageProgress({ current: 0, total: candidates.length });
+
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[i];
+      setEngageProgress({ current: i + 1, total: candidates.length });
+
+      // Skip already engaged
+      if (engagedCandidates.has(candidate.id)) continue;
+
+      try {
+        const res = await fetch("http://localhost:8000/simulate-interest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ candidate, jd_data: jdData }),
+        });
+
+        if (!res.ok) throw new Error("Failed to simulate");
+        const data = await res.json();
+
+        setEngagedCandidates(prev => {
+          const newMap = new Map(prev);
+          newMap.set(candidate.id, {
+            ...candidate,
+            interest_score: data.interest_score,
+            final_score: data.final_score,
+            chat_logs: data.chat_logs,
+          });
+          return newMap;
+        });
+      } catch (err) {
+        console.error(`Failed to engage ${candidate.name}:`, err);
+      }
+    }
+
+    setIsEngagingAll(false);
+    setPipelineStep("ranked");
+    setShowRankedShortlist(true);
+  };
+
+  // Ranked shortlist view
+  if (showRankedShortlist && engagedCandidates.size > 0 && jdData) {
+    return (
+      <div className="relative z-10 w-full min-h-screen pt-[120px] pb-24 px-6 flex flex-col items-center">
+        <PipelineSteps currentStep="ranked" />
+
+        {/* Dashboard Header */}
+        <div className="w-full max-w-[1400px] flex items-center justify-between mb-8">
+          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+            <Sparkles className="w-6 h-6 text-[#5AE14C]" />
+            ScoutIQ Results
+          </h2>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setShowRankedShortlist(false)}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-medium border border-white/10"
+            >
+              ← Back to Candidates
+            </button>
+            <button 
+              onClick={() => { setJdData(null); setCandidates(null); setEngagedCandidates(new Map()); setShowRankedShortlist(false); setPipelineStep("idle"); }}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-medium border border-white/10"
+            >
+              New Search
+            </button>
+          </div>
+        </div>
+
+        <RankedShortlist candidates={Array.from(engagedCandidates.values())} />
+      </div>
+    );
+  }
+
+  // Dashboard view (after JD parsed)
   if (jdData) {
     return (
       <div className="relative z-10 w-full min-h-screen pt-[120px] pb-24 px-6 flex flex-col items-center">
+        <PipelineSteps currentStep={pipelineStep} />
+
         {/* Dashboard Header */}
         <div className="w-full max-w-[1400px] flex items-center justify-between mb-8">
            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
              <Sparkles className="w-6 h-6 text-[#5AE14C]" />
              Candidate Discovery Dashboard
            </h2>
-           <button 
-             onClick={() => { setJdData(null); setCandidates(null); }}
-             className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-medium border border-white/10"
-           >
-             New Search
-           </button>
+           <div className="flex items-center gap-3">
+             {candidates && candidates.length > 0 && (
+               <button
+                 onClick={handleEngageAll}
+                 disabled={isEngagingAll}
+                 className="flex items-center gap-2 px-5 py-2.5 bg-[#5AE14C] text-black font-semibold rounded-xl hover:bg-[#4DC93F] transition-all shadow-[0_0_20px_rgba(90,225,76,0.3)] hover:shadow-[0_0_30px_rgba(90,225,76,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
+               >
+                 <Users className="w-4 h-4" />
+                 {isEngagingAll 
+                   ? `Engaging ${engageProgress.current}/${engageProgress.total}...` 
+                   : engagedCandidates.size > 0 
+                     ? "View Ranked Shortlist"
+                     : "Engage All & Rank"
+                 }
+               </button>
+             )}
+             {engagedCandidates.size > 0 && !isEngagingAll && (
+               <button
+                 onClick={() => { setPipelineStep("ranked"); setShowRankedShortlist(true); }}
+                 className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-medium border border-white/10"
+               >
+                 View Shortlist ({engagedCandidates.size})
+               </button>
+             )}
+             <button 
+               onClick={() => { setJdData(null); setCandidates(null); setEngagedCandidates(new Map()); setShowRankedShortlist(false); setPipelineStep("idle"); }}
+               className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-medium border border-white/10"
+             >
+               New Search
+             </button>
+           </div>
         </div>
+
+        {/* Engage All Progress */}
+        {isEngagingAll && (
+          <div className="w-full max-w-[1400px] mb-6">
+            <div className="glassmorphism rounded-[18px] border border-[#5AE14C]/20 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Users className="w-4 h-4 text-[#5AE14C]" />
+                  Engaging candidates via AI outreach...
+                </span>
+                <span className="text-sm font-bold text-[#5AE14C]">
+                  {engageProgress.current}/{engageProgress.total}
+                </span>
+              </div>
+              <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-[#5AE14C] transition-all duration-500 ease-out shadow-[0_0_10px_rgba(90,225,76,0.6)]"
+                  style={{ width: `${(engageProgress.current / Math.max(engageProgress.total, 1)) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Dashboard Grid */}
         <div className="w-full max-w-[1400px] grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-8 items-start">
@@ -135,16 +302,27 @@ export function Hero() {
                   <p className="text-white/60 font-medium animate-pulse">Running Matching Engine...</p>
                 </div>
               ) : candidates ? (
-                <CandidateList candidates={candidates} onEngage={handleEngage} />
+                <CandidateList 
+                  candidates={candidates} 
+                  onEngage={handleEngage} 
+                  engagedIds={new Set(engagedCandidates.keys())}
+                />
               ) : null}
            </div>
         </div>
 
-        <EngagementModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} candidate={selectedCandidate} jdData={jdData} />
+        <EngagementModal 
+          isOpen={isModalOpen} 
+          onClose={() => setIsModalOpen(false)} 
+          candidate={selectedCandidate} 
+          jdData={jdData}
+          onEngagementComplete={handleEngagementComplete}
+        />
       </div>
     );
   }
 
+  // Landing page
   return (
     <div className="relative z-10 w-full min-h-screen pt-[160px] pb-24 px-6 flex flex-col items-center justify-center -translate-y-8">
       

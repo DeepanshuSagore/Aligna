@@ -299,6 +299,41 @@ async def match_candidates(request: MatchRequest):
     scored_candidates.sort(key=lambda x: x.match_score, reverse=True)
     top_candidates = scored_candidates[:10]
     
+    # Enhance match reasons with Gemini explainability
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        candidates_summary = []
+        for i, c in enumerate(top_candidates):
+            candidates_summary.append(f"{i+1}. {c.name} - Role: {c.role}, Skills: {', '.join(c.skills[:6])}, YOE: {c.years_experience}, Score: {c.match_score}/100")
+        
+        explain_prompt = f"""You are a talent matching AI. For each of the following top candidates matched against a Job Description, write a concise 1-sentence explanation of WHY they are a good match.
+
+Job Description:
+- Role: {jd.role}
+- Must-have: {', '.join(jd.must_have_skills)}
+- Good-to-have: {', '.join(jd.good_to_have_skills)}
+- Experience: {jd.experience_required}
+- Location: {jd.location}
+
+Candidates:
+{chr(10).join(candidates_summary)}
+
+Return ONLY valid JSON as an array of strings, one explanation per candidate in order. Each explanation should be specific and mention key matching skills or traits. Keep each under 25 words.
+Example: ["Strong React/TypeScript match with 7 years experience exceeding the 4+ requirement.", ...]"""
+
+        response = model.generate_content(explain_prompt)
+        text = response.text.strip()
+        if text.startswith("```json"): text = text[7:]
+        if text.startswith("```"): text = text[3:]
+        if text.endswith("```"): text = text[:-3]
+        
+        explanations = json.loads(text.strip())
+        for i, explanation in enumerate(explanations):
+            if i < len(top_candidates):
+                top_candidates[i].match_reason = explanation
+    except Exception as e:
+        print(f"Gemini explainability failed (using fallback reasons): {e}")
+    
     return MatchResponse(candidates=top_candidates)
 
 class SimulateInterestRequest(BaseModel):

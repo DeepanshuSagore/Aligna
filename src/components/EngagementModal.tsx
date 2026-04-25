@@ -10,6 +10,11 @@ interface EngagementModalProps {
   onClose: () => void;
   candidate: Candidate | null;
   jdData: JDData | null;
+  onEngagementComplete?: (candidateId: string, result: {
+    interest_score: number;
+    final_score: number;
+    chat_logs: ChatMessage[];
+  }) => void;
 }
 
 interface ChatMessage {
@@ -23,7 +28,7 @@ interface SimulationResult {
   final_score: number;
 }
 
-export function EngagementModal({ isOpen, onClose, candidate, jdData }: EngagementModalProps) {
+export function EngagementModal({ isOpen, onClose, candidate, jdData, onEngagementComplete }: EngagementModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<SimulationResult | null>(null);
 
@@ -42,8 +47,17 @@ export function EngagementModal({ isOpen, onClose, candidate, jdData }: Engageme
           });
 
           if (!res.ok) throw new Error("Failed to simulate");
-          const data = await res.json();
+          const data: SimulationResult = await res.json();
           setResult(data);
+
+          // Pass result back to parent
+          if (onEngagementComplete && candidate) {
+            onEngagementComplete(candidate.id, {
+              interest_score: data.interest_score,
+              final_score: data.final_score,
+              chat_logs: data.chat_logs,
+            });
+          }
         } catch (err) {
           console.error(err);
         } finally {
@@ -171,7 +185,7 @@ export function EngagementModal({ isOpen, onClose, candidate, jdData }: Engageme
                 onClick={onClose}
                 className="px-6 py-2 bg-white text-black font-semibold rounded-lg hover:bg-white/90 transition-colors"
              >
-                Done
+               Done
              </button>
           </div>
         )}
