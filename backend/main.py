@@ -2,11 +2,13 @@ import os
 import json
 import re
 import io
+import asyncio
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import google.generativeai as genai
+from groq import Groq
 from motor.motor_asyncio import AsyncIOMotorClient
 import PyPDF2
 from dotenv import load_dotenv
@@ -15,7 +17,49 @@ from dotenv import load_dotenv
 load_dotenv("../../.env.local")
 load_dotenv("../.env.local")
 load_dotenv(".env.local")
-load_dotenv() # also load local .env if exists
+load_dotenv()  # also load local .env if exists
+
+# Gemini model - used for JD parsing (low volume)
+GEMINI_MODEL = 'gemini-2.0-flash'
+
+# Groq config - used for simulation (high volume, fast, generous free tier)
+GROQ_MODEL = 'llama-3.3-70b-versatile'
+groq_key = os.getenv("GROQ_API_KEY")
+groq_client = None
+if groq_key:
+    groq_client = Groq(api_key=groq_key)
+    print(f"Groq configured with model: {GROQ_MODEL}")
+else:
+    print("WARNING: GROQ_API_KEY not found. Will fall back to Gemini for simulations.")
+
+async def call_groq(prompt: str) -> str:
+    """Call Groq API for fast LLM inference."""
+    if not groq_client:
+        raise Exception("Groq client not configured")
+    response = groq_client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7,
+        max_tokens=1024,
+    )
+    return response.choices[0].message.content.strip()
+
+async def call_gemini_with_retry(prompt: str, max_retries: int = 3) -> str:
+    """Call Gemini API with retry logic for rate limits."""
+    model = genai.GenerativeModel(GEMINI_MODEL)
+    for attempt in range(max_retries):
+        try:
+            response = model.generate_content(prompt)
+            return response.text.strip()
+        except Exception as e:
+            error_str = str(e)
+            if '429' in error_str and attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 5
+                print(f"Gemini rate limited, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                await asyncio.sleep(wait_time)
+            else:
+                raise e
+    raise Exception("Max retries exceeded")
 
 # Configure Gemini
 api_key = os.getenv("GEMINI_API_KEY")
@@ -66,7 +110,7 @@ async def parse_jd(request: JobDescriptionRequest):
         
     try:
         # Use Gemini to parse the JD
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        model = genai.GenerativeModel(GEMINI_MODEL)
         
         prompt = f"""
         You are an expert technical recruiter and AI assistant. Your task is to extract structured information from the provided Job Description.
@@ -142,7 +186,7 @@ async def upload_jd(file: UploadFile = File(...)):
         if not extracted_text.strip():
             raise HTTPException(status_code=400, detail="Could not extract text from PDF.")
             
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        model = genai.GenerativeModel(GEMINI_MODEL)
         
         prompt = f"""
         You are an expert technical recruiter and AI assistant. Your task is to extract structured information from the provided Job Description text extracted from a PDF.
@@ -301,7 +345,7 @@ async def match_candidates(request: MatchRequest):
     
     # Enhance match reasons with Gemini explainability
     try:
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        model = genai.GenerativeModel(GEMINI_MODEL)
         candidates_summary = []
         for i, c in enumerate(top_candidates):
             candidates_summary.append(f"{i+1}. {c.name} - Role: {c.role}, Skills: {', '.join(c.skills[:6])}, YOE: {c.years_experience}, Score: {c.match_score}/100")
@@ -354,59 +398,73 @@ async def simulate_interest(request: SimulateInterestRequest):
     cand = request.candidate
     jd = request.jd_data
     
-    try:
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        prompt = f"""
-        You are a hiring simulator. Your job is to simulate a brief outreach conversation between an AI Recruiter (ScoutIQ) and a tech Candidate.
-        
-        Candidate Profile:
-        - Name: {cand.name}
-        - Role: {cand.role}
-        - Open to Work: {cand.open_to_work}
-        - Expected Salary: {cand.expected_salary}
-        - Remote Preference: {cand.remote_preference}
-        - Current Match Score with JD: {cand.match_score}/100
-        
-        Job Description Context:
-        - Role: {jd.role}
-        - Location: {jd.location}
-        
-        Task:
-        1. Write a 3-message chat log:
-           Message 1 (ScoutIQ): A brief, personalized outreach mentioning their skills and the role.
-           Message 2 ({cand.name}): The candidate's response based realistically on their profile (e.g. if they want remote and JD is on-site, they might decline. If open to work, they might be eager).
-           Message 3 (ScoutIQ): A brief wrap-up or next steps.
-        2. Assign an "interest_score" (0 to 100) based on how positive/eager their response was.
-        
-        Return ONLY valid JSON with EXACTLY this structure:
-        {{
-            "chat_logs": [
-                {{"sender": "ScoutIQ", "message": "..."}},
-                {{"sender": "{cand.name}", "message": "..."}},
-                {{"sender": "ScoutIQ", "message": "..."}}
-            ],
-            "interest_score": <int>
-        }}
-        """
-        
-        response = model.generate_content(prompt)
-        text = response.text.strip()
-        if text.startswith("```json"): text = text[7:]
-        if text.startswith("```"): text = text[3:]
-        if text.endswith("```"): text = text[:-3]
-        
-        data = json.loads(text.strip())
-        interest = data.get("interest_score", 50)
-        chat = data.get("chat_logs", [])
-        
-        final = int(0.7 * cand.match_score + 0.3 * interest)
-        
-        return SimulateInterestResponse(
-            chat_logs=chat,
-            interest_score=interest,
-            final_score=final
-        )
-    except Exception as e:
-        print(f"Error simulating interest: {e}")
-        raise HTTPException(status_code=500, detail="Failed to simulate interest")
+    prompt = f"""You are a hiring simulator. Simulate a brief outreach conversation between an AI Recruiter (ScoutIQ) and a tech Candidate.
 
+Candidate Profile:
+- Name: {cand.name}
+- Role: {cand.role}
+- Open to Work: {cand.open_to_work}
+- Expected Salary: {cand.expected_salary}
+- Remote Preference: {cand.remote_preference}
+- Match Score: {cand.match_score}/100
+
+Job: {jd.role} in {jd.location}
+
+Write a 3-message chat and assign an interest_score (0-100).
+Return ONLY valid JSON:
+{{
+    "chat_logs": [
+        {{"sender": "ScoutIQ", "message": "..."}},
+        {{"sender": "{cand.name}", "message": "..."}},
+        {{"sender": "ScoutIQ", "message": "..."}}
+    ],
+    "interest_score": <int>
+}}"""
+
+    # Try Groq first (fast, generous free tier), then Gemini, then fallback
+    text = None
+    for provider, call_fn in [("Groq", call_groq), ("Gemini", call_gemini_with_retry)]:
+        try:
+            text = await call_fn(prompt)
+            break
+        except Exception as e:
+            print(f"{provider} failed for simulate-interest: {e}")
+            continue
+    
+    if text:
+        try:
+            if text.startswith("```json"): text = text[7:]
+            if text.startswith("```"): text = text[3:]
+            if text.endswith("```"): text = text[:-3]
+            
+            data = json.loads(text.strip())
+            interest = data.get("interest_score", 50)
+            chat = data.get("chat_logs", [])
+            
+            final = int(0.7 * cand.match_score + 0.3 * interest)
+            
+            return SimulateInterestResponse(
+                chat_logs=chat,
+                interest_score=interest,
+                final_score=final
+            )
+        except json.JSONDecodeError as e:
+            print(f"JSON parse error: {e}")
+    
+    # Graceful fallback: synthetic response
+    print(f"All providers failed for {cand.name}, using synthetic fallback")
+    interest = 70 if cand.open_to_work else 35
+    if "remote" in cand.remote_preference.lower() and "remote" not in jd.location.lower() and jd.location.lower() != "not specified":
+        interest = max(interest - 30, 10)
+    
+    final = int(0.7 * cand.match_score + 0.3 * interest)
+    
+    return SimulateInterestResponse(
+        chat_logs=[
+            ChatMessage(sender="ScoutIQ", message=f"Hi {cand.name}! We found your profile impressive and think you'd be a great fit for our {jd.role} position. Your background in {', '.join(cand.skills[:3])} really stands out."),
+            ChatMessage(sender=cand.name, message=f"{'Thanks for reaching out! I am currently open to new opportunities and this sounds interesting.' if cand.open_to_work else 'I appreciate the outreach. I am not actively looking right now, but I would be open to hearing more about the role.'}"),
+            ChatMessage(sender="ScoutIQ", message=f"Great to hear! I will send over the full job details and we can schedule a call to discuss further. Looking forward to connecting!")
+        ],
+        interest_score=interest,
+        final_score=final
+    )
