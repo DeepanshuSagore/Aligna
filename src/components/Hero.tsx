@@ -16,7 +16,7 @@ export function Hero() {
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const handleAnalyze = async (jdText: string) => {
+  const handleAnalyzeText = async (jdText: string) => {
     setIsLoading(true);
     setJdData(null);
     try {
@@ -39,6 +39,34 @@ export function Hero() {
     } catch (error) {
       console.error(error);
       alert("Failed to analyze the Job Description. Make sure the backend is running and you have a valid Gemini API key configured.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAnalyzeFile = async (file: File) => {
+    setIsLoading(true);
+    setJdData(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      const res = await fetch("http://localhost:8000/upload-jd", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to parse PDF JD");
+      }
+
+      const data: JDData = await res.json();
+      setJdData(data);
+      setCandidates(null);
+      await handleFindMatches(data);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to analyze the PDF. Make sure the backend is running and you uploaded a valid PDF.");
     } finally {
       setIsLoading(false);
     }
@@ -143,7 +171,7 @@ export function Hero() {
       </p>
 
       {/* Interactive Phase 0 Card */}
-      <JDInputCard onAnalyze={handleAnalyze} isLoading={isLoading} />
+      <JDInputCard onAnalyzeText={handleAnalyzeText} onAnalyzeFile={handleAnalyzeFile} isLoading={isLoading} />
 
       {/* Feature Cards */}
       <div className="mt-16 w-full flex flex-col items-center">

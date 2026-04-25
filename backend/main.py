@@ -1,12 +1,14 @@
 import os
 import json
 import re
-from fastapi import FastAPI, HTTPException
+import io
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import google.generativeai as genai
 from motor.motor_asyncio import AsyncIOMotorClient
+import PyPDF2
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -124,6 +126,72 @@ async def parse_jd(request: JobDescriptionRequest):
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+@app.post("/upload-jd", response_model=JobDescriptionResponse)
+async def upload_jd(file: UploadFile = File(...)):
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    
+    try:
+        content = await file.read()
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
+        extracted_text = ""
+        for page in pdf_reader.pages:
+            extracted_text += page.extract_text() + "\n"
+            
+        if not extracted_text.strip():
+            raise HTTPException(status_code=400, detail="Could not extract text from PDF.")
+            
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        prompt = f"""
+        You are an expert technical recruiter and AI assistant. Your task is to extract structured information from the provided Job Description text extracted from a PDF.
+        
+        Analyze the following Job Description and return a JSON object with EXACTLY these fields:
+        - "role": (string) The main job title/role.
+        - "experience_required": (string) The required years of experience (e.g., "4+ years", "Entry level", "Not specified").
+        - "must_have_skills": (list of strings) Up to 10 absolute critical skills required. Keep them concise (e.g., "React", "Next.js").
+        - "good_to_have_skills": (list of strings) Up to 10 preferred or bonus skills. Keep them concise.
+        - "location": (string) Location, remote status, or "Not specified".
+        - "seniority": (string) Seniority level (e.g., "Junior", "Mid-Level", "Senior", "Lead", "Not specified").
+        - "summary": (string) A concise 2-3 sentence summary of the role and its primary objective.
+        
+        Return ONLY valid JSON. No markdown formatting, no code blocks, just the raw JSON object.
+        
+        Job Description:
+        {extracted_text}
+        """
+        
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+        
+        if text.startswith("```json"): text = text[7:]
+        if text.startswith("```"): text = text[3:]
+        if text.endswith("```"): text = text[:-3]
+            
+        parsed_data = json.loads(text.strip())
+        
+        return JobDescriptionResponse(
+            role=parsed_data.get("role", "Not specified"),
+            experience_required=parsed_data.get("experience_required", "Not specified"),
+            must_have_skills=parsed_data.get("must_have_skills", []),
+            good_to_have_skills=parsed_data.get("good_to_have_skills", []),
+            location=parsed_data.get("location", "Not specified"),
+            seniority=parsed_data.get("seniority", "Not specified"),
+            summary=parsed_data.get("summary", "Summary not available.")
+        )
+        
+    except Exception as e:
+        print(f"Error parsing PDF JD: {e}")
+        return JobDescriptionResponse(
+            role="Unknown Role",
+            experience_required="Not specified",
+            must_have_skills=[],
+            good_to_have_skills=[],
+            location="Not specified",
+            seniority="Not specified",
+            summary="Could not automatically parse the PDF job description. Please review it manually."
+        )
 
 class MatchRequest(BaseModel):
     jd_data: JobDescriptionResponse

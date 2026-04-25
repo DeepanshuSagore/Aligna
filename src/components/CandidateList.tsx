@@ -31,12 +31,16 @@ export function CandidateList({ candidates, onEngage }: CandidateListProps) {
   if (!candidates || candidates.length === 0) return null;
 
   const handleExportCSV = () => {
-    let csvContent = "data:text/csv;charset=utf-8,";
+    let csvContent = "";
+    // Add BOM for Excel UTF-8 support
+    const BOM = "\uFEFF";
+    csvContent += BOM;
+
     let headers = ["Name", "Role", "Match Score", "Years Experience", "City", "Remote Preference", "Expected Salary", "Last Company", "Top Skills"];
     if (includeAIReason) {
       headers.push("AI Match Reason");
     }
-    csvContent += headers.join(",") + "\\n";
+    csvContent += headers.join(",") + "\n";
 
     candidates.forEach((c) => {
       let row = [
@@ -53,16 +57,18 @@ export function CandidateList({ candidates, onEngage }: CandidateListProps) {
       if (includeAIReason) {
         row.push(`"${c.match_reason.replace(/"/g, '""')}"`);
       }
-      csvContent += row.join(",") + "\\n";
+      csvContent += row.join(",") + "\n";
     });
 
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", "scoutiq_shortlist.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (

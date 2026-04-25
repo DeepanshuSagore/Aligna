@@ -1,35 +1,87 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowRight, FileText, Sparkles, X, Loader2 } from "lucide-react";
+import { useState, useRef } from "react";
+import { ArrowRight, FileText, Sparkles, X, Loader2, UploadCloud } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface JDInputCardProps {
-  onAnalyze: (jdText: string) => Promise<void>;
+  onAnalyzeText: (jdText: string) => Promise<void>;
+  onAnalyzeFile: (file: File) => Promise<void>;
   isLoading: boolean;
 }
 
-export function JDInputCard({ onAnalyze, isLoading }: JDInputCardProps) {
+export function JDInputCard({ onAnalyzeText, onAnalyzeFile, isLoading }: JDInputCardProps) {
   const [jdText, setJdText] = useState("");
   const [error, setError] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAnalyzeClick = async () => {
+    if (selectedFile) {
+      setError("");
+      await onAnalyzeFile(selectedFile);
+      return;
+    }
     if (!jdText.trim()) {
-      setError("Please enter a job description.");
+      setError("Please paste a job description or upload a PDF.");
       return;
     }
     setError("");
-    await onAnalyze(jdText);
+    await onAnalyzeText(jdText);
   };
 
   const handleClear = () => {
     setJdText("");
+    setSelectedFile(null);
     setError("");
+    if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+    }
   };
 
   const handleSample = () => {
     setJdText("Looking for a Senior Frontend Engineer with 4+ years of experience in React, Next.js, and TypeScript. Must have a strong eye for UI/UX and be comfortable working in a fast-paced environment.");
+    setSelectedFile(null);
     setError("");
+  };
+
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const onDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+        setSelectedFile(file);
+        setJdText("");
+        setError("");
+      } else {
+        setError("Only PDF files are supported right now.");
+      }
+    }
+  };
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+        setSelectedFile(file);
+        setJdText("");
+        setError("");
+      } else {
+        setError("Only PDF files are supported right now.");
+      }
+    }
   };
 
   return (
@@ -53,26 +105,66 @@ export function JDInputCard({ onAnalyze, isLoading }: JDInputCardProps) {
         </div>
       </div>
 
-      {/* Main Textarea */}
+      {/* Main Drag-and-Drop / Textarea */}
       <div className="p-6 pb-4">
-        <div className={cn("relative w-full rounded-[16px] bg-white overflow-hidden shadow-inner group transition-colors border", error ? "border-red-500" : "border-transparent")}>
-          <textarea
-            value={jdText}
-            onChange={(e) => {
-              setJdText(e.target.value);
-              if (error) setError("");
-            }}
-            disabled={isLoading}
-            placeholder="Paste Job Description here...&#10;Example:&#10;Need Frontend Developer with React, Next.js, 2+ years experience"
-            className="w-full h-[180px] md:h-[220px] p-6 text-black placeholder:text-gray-400 bg-transparent resize-none outline-none font-inter text-[16px] leading-[1.6] disabled:opacity-70 disabled:cursor-not-allowed"
-          />
-          {jdText && !isLoading && (
-            <button 
-              onClick={handleClear}
-              className="absolute top-4 right-4 p-1.5 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+        <div 
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            className={cn(
+                "relative w-full rounded-[16px] overflow-hidden transition-all duration-300 border-2", 
+                isDragging ? "border-[#5AE14C] bg-[#5AE14C]/10 scale-[1.01] shadow-[0_0_30px_rgba(90,225,76,0.2)]" : 
+                error ? "border-red-500 bg-white" : "border-transparent bg-white"
+            )}
+        >
+          {selectedFile ? (
+              <div className="w-full h-[180px] md:h-[220px] flex flex-col items-center justify-center gap-4 bg-white/5">
+                  <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center shadow-inner">
+                      <FileText className="w-8 h-8 text-blue-500" />
+                  </div>
+                  <div className="text-center">
+                      <p className="text-lg font-bold text-gray-800">{selectedFile.name}</p>
+                      <p className="text-sm text-gray-500 font-medium">PDF Ready for Analysis</p>
+                  </div>
+                  {!isLoading && (
+                    <button 
+                    onClick={handleClear}
+                    className="absolute top-4 right-4 p-1.5 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors shadow-sm"
+                    >
+                    <X className="w-4 h-4" />
+                    </button>
+                  )}
+              </div>
+          ) : (
+            <>
+                <textarea
+                    value={jdText}
+                    onChange={(e) => {
+                    setJdText(e.target.value);
+                    if (error) setError("");
+                    }}
+                    disabled={isLoading}
+                    placeholder="Paste Job Description here, or drag and drop a PDF file..."
+                    className={cn(
+                        "w-full h-[180px] md:h-[220px] p-6 text-black placeholder:text-gray-400 bg-transparent resize-none outline-none font-inter text-[16px] leading-[1.6] disabled:opacity-70 disabled:cursor-not-allowed",
+                        isDragging && "opacity-30"
+                    )}
+                />
+                {isDragging && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <UploadCloud className="w-12 h-12 text-[#5AE14C] mb-2 animate-bounce" />
+                        <span className="text-xl font-bold text-[#5AE14C]">Drop PDF Here</span>
+                    </div>
+                )}
+                {jdText && !isLoading && (
+                    <button 
+                    onClick={handleClear}
+                    className="absolute top-4 right-4 p-1.5 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors shadow-sm"
+                    >
+                    <X className="w-4 h-4" />
+                    </button>
+                )}
+            </>
           )}
         </div>
         {error && (
@@ -83,16 +175,24 @@ export function JDInputCard({ onAnalyze, isLoading }: JDInputCardProps) {
       {/* Bottom Action Row */}
       <div className="px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-white/5">
         <div className="flex items-center gap-3 w-full sm:w-auto">
+          <input 
+            type="file" 
+            accept=".pdf" 
+            className="hidden" 
+            ref={fileInputRef} 
+            onChange={onFileChange} 
+          />
           <button 
+            onClick={() => fileInputRef.current?.click()}
             disabled={isLoading}
             className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white/80 border border-white/20 rounded-full hover:bg-white/10 hover:text-white transition-all w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <FileText className="w-4 h-4" />
-            Upload JD
+            <UploadCloud className="w-4 h-4" />
+            Upload PDF
           </button>
           <button 
             onClick={handleSample}
-            disabled={isLoading}
+            disabled={isLoading || selectedFile !== null}
             className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white/80 border border-white/20 rounded-full hover:bg-white/10 hover:text-white transition-all w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Use Sample
@@ -101,7 +201,7 @@ export function JDInputCard({ onAnalyze, isLoading }: JDInputCardProps) {
 
         <button 
           onClick={handleAnalyzeClick}
-          disabled={!jdText.trim() || isLoading}
+          disabled={(!jdText.trim() && !selectedFile) || isLoading}
           className="group relative flex items-center justify-center gap-2 px-6 py-3.5 bg-black text-white font-semibold rounded-xl w-full sm:w-auto overflow-hidden transition-all shadow-[0_0_20px_rgba(255,255,255,0.15)] hover:shadow-[0_0_25px_rgba(255,255,255,0.3)] disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5"
         >
           <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-[100%] group-hover:animate-[shimmer_1.5s_infinite]"></div>
