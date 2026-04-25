@@ -40,7 +40,7 @@ export function EngagementModal({ isOpen, onClose, candidate, jdData, onEngageme
 
       const simulate = async () => {
         try {
-          const res = await fetch("http://localhost:8000/simulate-interest", {
+          const res = await fetch(`/api/simulate-interest`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ candidate, jd_data: jdData }),

@@ -14,10 +14,7 @@ import PyPDF2
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv("../../.env.local")
-load_dotenv("../.env.local")
 load_dotenv(".env.local")
-load_dotenv()  # also load local .env if exists
 
 # Gemini model - used for JD parsing (low volume)
 GEMINI_MODEL = 'gemini-2.0-flash'
@@ -103,7 +100,7 @@ class JobDescriptionResponse(BaseModel):
     seniority: str
     summary: str
 
-@app.post("/parse-jd", response_model=JobDescriptionResponse)
+@app.post("/api/parse-jd", response_model=JobDescriptionResponse)
 async def parse_jd(request: JobDescriptionRequest):
     if not request.job_description.strip():
         raise HTTPException(status_code=400, detail="Job description cannot be empty")
@@ -167,11 +164,11 @@ async def parse_jd(request: JobDescriptionRequest):
             summary="Could not automatically parse the job description. Please review it manually."
         )
 
-@app.get("/health")
+@app.get("/api/health")
 def health_check():
     return {"status": "healthy"}
 
-@app.post("/upload-jd", response_model=JobDescriptionResponse)
+@app.post("/api/upload-jd", response_model=JobDescriptionResponse)
 async def upload_jd(file: UploadFile = File(...)):
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
@@ -258,7 +255,7 @@ class Candidate(BaseModel):
 class MatchResponse(BaseModel):
     candidates: List[Candidate]
 
-@app.post("/match-candidates", response_model=MatchResponse)
+@app.post("/api/match-candidates", response_model=MatchResponse)
 async def match_candidates(request: MatchRequest):
     candidates_data = []
     
@@ -393,7 +390,7 @@ class SimulateInterestResponse(BaseModel):
     interest_score: int
     final_score: int
 
-@app.post("/simulate-interest", response_model=SimulateInterestResponse)
+@app.post("/api/simulate-interest", response_model=SimulateInterestResponse)
 async def simulate_interest(request: SimulateInterestRequest):
     cand = request.candidate
     jd = request.jd_data

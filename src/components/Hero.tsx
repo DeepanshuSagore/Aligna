@@ -32,7 +32,7 @@ export function Hero() {
     setEngagedCandidates(new Map());
     setShowRankedShortlist(false);
     try {
-      const res = await fetch("http://localhost:8000/parse-jd", {
+      const res = await fetch(`/api/parse-jd`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -67,7 +67,7 @@ export function Hero() {
       const formData = new FormData();
       formData.append("file", file);
       
-      const res = await fetch("http://localhost:8000/upload-jd", {
+      const res = await fetch(`/api/upload-jd`, {
         method: "POST",
         body: formData,
       });
@@ -94,7 +94,7 @@ export function Hero() {
     setIsMatching(true);
     setPipelineStep("matching");
     try {
-      const res = await fetch("http://localhost:8000/match-candidates", {
+      const res = await fetch(`/api/match-candidates`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -157,7 +157,7 @@ export function Hero() {
       if (engagedCandidates.has(candidate.id)) continue;
 
       try {
-        const res = await fetch("http://localhost:8000/simulate-interest", {
+        const res = await fetch(`/api/simulate-interest`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ candidate, jd_data: jdData }),
