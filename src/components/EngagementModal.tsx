@@ -92,21 +92,36 @@ export function EngagementModal({ isOpen, onClose, candidate, jdData }: Engageme
               
               {/* Score Recap */}
               <div className="grid grid-cols-2 gap-4 mb-2">
-                <div className="glassmorphism p-4 rounded-xl border border-white/10 flex flex-col items-center text-center">
+                <div className="glassmorphism p-4 rounded-xl border border-white/10 flex flex-col items-center justify-center text-center relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                   <span className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-1 flex items-center gap-1">
                     <Target className="w-3 h-3" /> Interest Score
                   </span>
-                  <span className={`text-3xl font-bold ${result.interest_score >= 70 ? 'text-[#5AE14C]' : result.interest_score >= 40 ? 'text-[#FACC15]' : 'text-[#F87171]'}`}>
+                  <span className={`text-3xl font-bold mb-2 ${result.interest_score >= 70 ? 'text-[#5AE14C]' : result.interest_score >= 40 ? 'text-[#FACC15]' : 'text-[#F87171]'}`}>
                     {result.interest_score}/100
                   </span>
+                  <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all duration-1000 ease-out ${result.interest_score >= 70 ? 'bg-[#5AE14C]' : result.interest_score >= 40 ? 'bg-[#FACC15]' : 'bg-[#F87171]'}`}
+                      style={{ width: `${result.interest_score}%` }}
+                    ></div>
+                  </div>
                 </div>
-                <div className="glassmorphism p-4 rounded-xl border border-[#5AE14C]/30 bg-[#5AE14C]/5 flex flex-col items-center text-center">
+                
+                <div className="glassmorphism p-4 rounded-xl border border-[#5AE14C]/30 bg-[#5AE14C]/5 flex flex-col items-center justify-center text-center relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-[#5AE14C]/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                   <span className="text-[#5AE14C]/80 text-xs font-semibold uppercase tracking-wider mb-1 flex items-center gap-1">
                     <Award className="w-3 h-3" /> Final Score
                   </span>
-                  <span className="text-3xl font-bold text-[#5AE14C] drop-shadow-[0_0_10px_rgba(90,225,76,0.4)]">
+                  <span className="text-3xl font-bold text-[#5AE14C] drop-shadow-[0_0_10px_rgba(90,225,76,0.4)] mb-2">
                     {result.final_score}/100
                   </span>
+                  <div className="w-full h-1.5 bg-[#5AE14C]/20 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-[#5AE14C] transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(90,225,76,0.8)]"
+                      style={{ width: `${result.final_score}%` }}
+                    ></div>
+                  </div>
                 </div>
               </div>
 

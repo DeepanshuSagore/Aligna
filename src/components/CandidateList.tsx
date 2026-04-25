@@ -1,6 +1,7 @@
 "use client";
 
-import { UserCircle2, MapPin, Briefcase, ChevronRight } from "lucide-react";
+import { useState } from "react";
+import { UserCircle2, MapPin, Briefcase, ChevronRight, Download } from "lucide-react";
 import { SkillPills } from "./SkillPills";
 
 export interface Candidate {
@@ -25,13 +26,70 @@ interface CandidateListProps {
 }
 
 export function CandidateList({ candidates, onEngage }: CandidateListProps) {
+  const [includeAIReason, setIncludeAIReason] = useState(false);
+
   if (!candidates || candidates.length === 0) return null;
+
+  const handleExportCSV = () => {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    let headers = ["Name", "Role", "Match Score", "Years Experience", "City", "Remote Preference", "Expected Salary", "Last Company", "Top Skills"];
+    if (includeAIReason) {
+      headers.push("AI Match Reason");
+    }
+    csvContent += headers.join(",") + "\\n";
+
+    candidates.forEach((c) => {
+      let row = [
+        `"${c.name}"`,
+        `"${c.role}"`,
+        c.match_score,
+        c.years_experience,
+        `"${c.city}"`,
+        `"${c.remote_preference}"`,
+        `"${c.expected_salary}"`,
+        `"${c.last_company}"`,
+        `"${c.skills.slice(0,5).join(", ")}"`
+      ];
+      if (includeAIReason) {
+        row.push(`"${c.match_reason.replace(/"/g, '""')}"`);
+      }
+      csvContent += row.join(",") + "\\n";
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "scoutiq_shortlist.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="w-full flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-8 duration-700 pb-24">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-3xl font-fustat font-bold text-white drop-shadow-md">Top Matches</h2>
-        <span className="text-white/60 text-sm font-medium">{candidates.length} candidates found</span>
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-2 gap-4">
+        <div>
+          <h2 className="text-3xl font-fustat font-bold text-white drop-shadow-md">Top Matches</h2>
+          <span className="text-white/60 text-sm font-medium">{candidates.length} candidates found</span>
+        </div>
+        <div className="flex items-center gap-4 bg-white/5 p-2 rounded-xl border border-white/10">
+          <label className="flex items-center gap-2 text-xs text-white/70 cursor-pointer hover:text-white transition-colors">
+            <input 
+              type="checkbox" 
+              checked={includeAIReason} 
+              onChange={(e) => setIncludeAIReason(e.target.checked)}
+              className="rounded bg-white/10 border-white/20 text-[#5AE14C] focus:ring-[#5AE14C] focus:ring-offset-0"
+            />
+            Include AI Reasons
+          </label>
+          <button 
+            onClick={handleExportCSV}
+            className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-medium"
+          >
+            <Download className="w-4 h-4" />
+            Export
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-4">

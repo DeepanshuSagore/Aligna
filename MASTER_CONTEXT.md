@@ -102,7 +102,7 @@ Paste a JD -> understand needs -> find candidates -> assess interest -> ranked s
 - JD parser functional
 
 ## Current Next Phase
-PHASE 2 — Candidate Discovery + Matching Engine
+PHASE 6 — UX Polish & Export
 
 ---
 
@@ -113,18 +113,18 @@ Frontend shell + backend connection.
 
 ## Phase 1 — JD Parser (DONE)
 
-## Phase 2 — Candidate Dataset + Matching Engine
+## Phase 2 — Candidate Dataset + Matching Engine (DONE)
 Create 100–500 realistic candidates.
 Compare JD with candidates.
 Return top 10.
 
-## Phase 3 — Explainability Layer
+## Phase 3 — Explainability Layer (DONE)
 Show why each candidate was selected.
 
-## Phase 4 — Interest Scoring Agent
+## Phase 4 — Interest Scoring Agent (DONE)
 Simulated outreach chat + interest score.
 
-## Phase 5 — Final Ranking Engine
+## Phase 5 — Final Ranking Engine (DONE)
 Final Score = 0.7 Match + 0.3 Interest
 
 ## Phase 6 — UX Polish
@@ -186,7 +186,7 @@ Read this file first.
 Continue from current phase.
 
 Current phase:
-PHASE 2 — Candidate Discovery + Matching Engine
+PHASE 6 — UX Polish & Export
 
 ---
 
