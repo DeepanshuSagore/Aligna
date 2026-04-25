@@ -28,7 +28,7 @@ export function CandidateList({ candidates, onEngage }: CandidateListProps) {
   if (!candidates || candidates.length === 0) return null;
 
   return (
-    <div className="w-full max-w-[1000px] mt-12 flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-8 duration-700 pb-24">
+    <div className="w-full flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-8 duration-700 pb-24">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-3xl font-fustat font-bold text-white drop-shadow-md">Top Matches</h2>
         <span className="text-white/60 text-sm font-medium">{candidates.length} candidates found</span>

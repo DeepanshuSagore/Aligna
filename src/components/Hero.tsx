@@ -35,6 +35,7 @@ export function Hero() {
       const data: JDData = await res.json();
       setJdData(data);
       setCandidates(null);
+      await handleFindMatches(data);
     } catch (error) {
       console.error(error);
       alert("Failed to analyze the Job Description. Make sure the backend is running and you have a valid Gemini API key configured.");
@@ -43,8 +44,8 @@ export function Hero() {
     }
   };
 
-  const handleFindMatches = async () => {
-    if (!jdData) return;
+  const handleFindMatches = async (dataToMatch: JDData) => {
+    if (!dataToMatch) return;
     setIsMatching(true);
     try {
       const res = await fetch("http://localhost:8000/match-candidates", {
@@ -52,7 +53,7 @@ export function Hero() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ jd_data: jdData }),
+        body: JSON.stringify({ jd_data: dataToMatch }),
       });
 
       if (!res.ok) {
@@ -73,6 +74,48 @@ export function Hero() {
     setSelectedCandidate(candidate);
     setIsModalOpen(true);
   };
+
+  if (jdData) {
+    return (
+      <div className="relative z-10 w-full min-h-screen pt-[120px] pb-24 px-6 flex flex-col items-center">
+        {/* Dashboard Header */}
+        <div className="w-full max-w-[1400px] flex items-center justify-between mb-8">
+           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+             <Sparkles className="w-6 h-6 text-[#5AE14C]" />
+             Candidate Discovery Dashboard
+           </h2>
+           <button 
+             onClick={() => { setJdData(null); setCandidates(null); }}
+             className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-medium border border-white/10"
+           >
+             New Search
+           </button>
+        </div>
+
+        {/* Dashboard Grid */}
+        <div className="w-full max-w-[1400px] grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-8 items-start">
+           {/* Left Sidebar: JD Summary */}
+           <div className="sticky top-24">
+             <JDResults data={jdData} />
+           </div>
+
+           {/* Right Main Content: Candidates */}
+           <div>
+              {isMatching ? (
+                <div className="flex flex-col items-center justify-center h-64 gap-4 glassmorphism rounded-[24px] border border-white/10">
+                  <div className="w-10 h-10 border-4 border-[#5AE14C] border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-white/60 font-medium animate-pulse">Running Matching Engine...</p>
+                </div>
+              ) : candidates ? (
+                <CandidateList candidates={candidates} onEngage={handleEngage} />
+              ) : null}
+           </div>
+        </div>
+
+        <EngagementModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} candidate={selectedCandidate} jdData={jdData} />
+      </div>
+    );
+  }
 
   return (
     <div className="relative z-10 w-full min-h-screen pt-[160px] pb-24 px-6 flex flex-col items-center justify-center -translate-y-8">
@@ -102,27 +145,11 @@ export function Hero() {
       {/* Interactive Phase 0 Card */}
       <JDInputCard onAnalyze={handleAnalyze} isLoading={isLoading} />
 
-      {/* Results or Feature Cards */}
+      {/* Feature Cards */}
       <div className="mt-16 w-full flex flex-col items-center">
-        {jdData ? (
-          <>
-            <JDResults 
-              data={jdData} 
-              onFindCandidates={handleFindMatches} 
-              isMatching={isMatching} 
-            />
-            {candidates && (
-              <CandidateList 
-                candidates={candidates} 
-                onEngage={handleEngage} 
-              />
-            )}
-          </>
-        ) : (
-          <div className="max-w-[1000px] w-full">
-            <FeatureCards />
-          </div>
-        )}
+        <div className="max-w-[1000px] w-full">
+          <FeatureCards />
+        </div>
       </div>
 
       {/* Trust Section */}
@@ -133,13 +160,6 @@ export function Hero() {
         <span className="w-1.5 h-1.5 rounded-full bg-[#d1d1d1]/30"></span>
         <span>Instant Shortlisting</span>
       </div>
-
-      <EngagementModal 
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        candidate={selectedCandidate}
-        jdData={jdData}
-      />
     </div>
   );
 }
