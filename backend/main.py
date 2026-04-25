@@ -64,7 +64,7 @@ async def parse_jd(request: JobDescriptionRequest):
         
     try:
         # Use Gemini to parse the JD
-        model = genai.GenerativeModel('gemini-2.5-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         prompt = f"""
         You are an expert technical recruiter and AI assistant. Your task is to extract structured information from the provided Job Description.
@@ -252,7 +252,7 @@ async def simulate_interest(request: SimulateInterestRequest):
     jd = request.jd_data
     
     try:
-        model = genai.GenerativeModel('gemini-2.5-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         prompt = f"""
         You are a hiring simulator. Your job is to simulate a brief outreach conversation between an AI Recruiter (ScoutIQ) and a tech Candidate.
         

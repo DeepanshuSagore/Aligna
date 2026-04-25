@@ -6,12 +6,15 @@ import { JDInputCard } from "./JDInputCard";
 import { FeatureCards } from "./FeatureCards";
 import { JDResults, type JDData } from "./JDResults";
 import { CandidateList, type Candidate } from "./CandidateList";
+import { EngagementModal } from "./EngagementModal";
 
 export function Hero() {
   const [isLoading, setIsLoading] = useState(false);
   const [isMatching, setIsMatching] = useState(false);
   const [jdData, setJdData] = useState<JDData | null>(null);
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleAnalyze = async (jdText: string) => {
     setIsLoading(true);
@@ -66,6 +69,11 @@ export function Hero() {
     }
   };
 
+  const handleEngage = (candidate: Candidate) => {
+    setSelectedCandidate(candidate);
+    setIsModalOpen(true);
+  };
+
   return (
     <div className="relative z-10 w-full min-h-screen pt-[160px] pb-24 px-6 flex flex-col items-center justify-center -translate-y-8">
       
@@ -103,7 +111,12 @@ export function Hero() {
               onFindCandidates={handleFindMatches} 
               isMatching={isMatching} 
             />
-            {candidates && <CandidateList candidates={candidates} />}
+            {candidates && (
+              <CandidateList 
+                candidates={candidates} 
+                onEngage={handleEngage} 
+              />
+            )}
           </>
         ) : (
           <div className="max-w-[1000px] w-full">
@@ -120,6 +133,13 @@ export function Hero() {
         <span className="w-1.5 h-1.5 rounded-full bg-[#d1d1d1]/30"></span>
         <span>Instant Shortlisting</span>
       </div>
+
+      <EngagementModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        candidate={selectedCandidate}
+        jdData={jdData}
+      />
     </div>
   );
 }

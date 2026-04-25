@@ -21,9 +21,10 @@ export interface Candidate {
 
 interface CandidateListProps {
   candidates: Candidate[];
+  onEngage: (candidate: Candidate) => void;
 }
 
-export function CandidateList({ candidates }: CandidateListProps) {
+export function CandidateList({ candidates, onEngage }: CandidateListProps) {
   if (!candidates || candidates.length === 0) return null;
 
   return (
@@ -107,14 +108,14 @@ export function CandidateList({ candidates }: CandidateListProps) {
             {/* Actions */}
             <div className="flex-shrink-0 w-full md:w-auto mt-4 md:mt-0 flex flex-col items-center justify-center">
               <button 
-                disabled
-                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-white/5 border border-white/10 text-white font-medium rounded-xl hover:bg-white/10 transition-colors opacity-60 cursor-not-allowed group-hover:opacity-100 group-hover:cursor-pointer group-hover:bg-white group-hover:text-black group-hover:border-transparent"
+                onClick={() => onEngage(candidate)}
+                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-white/5 border border-white/10 text-white font-medium rounded-xl hover:bg-white transition-colors group-hover:bg-white group-hover:text-black group-hover:border-transparent"
               >
                 <span>Engage</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
-              <span className="text-[10px] text-white/30 mt-2 uppercase tracking-widest hidden md:block">
-                Phase 3 Feature
+              <span className="text-[10px] text-white/50 mt-2 uppercase tracking-widest hidden md:block text-center">
+                AI Outreach
               </span>
             </div>
           </div>
