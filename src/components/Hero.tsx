@@ -5,10 +5,13 @@ import { Sparkles, Zap } from "lucide-react";
 import { JDInputCard } from "./JDInputCard";
 import { FeatureCards } from "./FeatureCards";
 import { JDResults, type JDData } from "./JDResults";
+import { CandidateList, type Candidate } from "./CandidateList";
 
 export function Hero() {
   const [isLoading, setIsLoading] = useState(false);
+  const [isMatching, setIsMatching] = useState(false);
   const [jdData, setJdData] = useState<JDData | null>(null);
+  const [candidates, setCandidates] = useState<Candidate[] | null>(null);
 
   const handleAnalyze = async (jdText: string) => {
     setIsLoading(true);
@@ -28,11 +31,38 @@ export function Hero() {
 
       const data: JDData = await res.json();
       setJdData(data);
+      setCandidates(null);
     } catch (error) {
       console.error(error);
       alert("Failed to analyze the Job Description. Make sure the backend is running and you have a valid Gemini API key configured.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleFindMatches = async () => {
+    if (!jdData) return;
+    setIsMatching(true);
+    try {
+      const res = await fetch("http://localhost:8000/match-candidates", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ jd_data: jdData }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to match candidates");
+      }
+
+      const data = await res.json();
+      setCandidates(data.candidates);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to find matches. Make sure backend is running and mock_candidates.json exists.");
+    } finally {
+      setIsMatching(false);
     }
   };
 
@@ -65,9 +95,16 @@ export function Hero() {
       <JDInputCard onAnalyze={handleAnalyze} isLoading={isLoading} />
 
       {/* Results or Feature Cards */}
-      <div className="mt-16 w-full flex justify-center">
+      <div className="mt-16 w-full flex flex-col items-center">
         {jdData ? (
-          <JDResults data={jdData} />
+          <>
+            <JDResults 
+              data={jdData} 
+              onFindCandidates={handleFindMatches} 
+              isMatching={isMatching} 
+            />
+            {candidates && <CandidateList candidates={candidates} />}
+          </>
         ) : (
           <div className="max-w-[1000px] w-full">
             <FeatureCards />

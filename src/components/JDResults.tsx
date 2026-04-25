@@ -13,9 +13,11 @@ export interface JDData {
 
 interface JDResultsProps {
   data: JDData;
+  onFindCandidates?: () => void;
+  isMatching?: boolean;
 }
 
-export function JDResults({ data }: JDResultsProps) {
+export function JDResults({ data, onFindCandidates, isMatching }: JDResultsProps) {
   return (
     <div className="w-full max-w-[1000px] flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
       
@@ -57,6 +59,23 @@ export function JDResults({ data }: JDResultsProps) {
           </p>
         </div>
       </div>
+
+      {/* Action Row */}
+      {onFindCandidates && (
+        <div className="flex justify-center mt-6">
+          <button 
+            onClick={onFindCandidates}
+            disabled={isMatching}
+            className="group relative flex items-center justify-center gap-2 px-8 py-4 bg-white text-black font-bold rounded-xl overflow-hidden transition-all shadow-[0_0_20px_rgba(255,255,255,0.4)] hover:shadow-[0_0_30px_rgba(255,255,255,0.6)] disabled:opacity-70 disabled:cursor-not-allowed hover:-translate-y-0.5"
+          >
+            <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-black/10 to-transparent -translate-x-[100%] group-hover:animate-[shimmer_1.5s_infinite]"></div>
+            <span className="relative z-10">
+              {isMatching ? "Running Matching Engine..." : "Find Matching Candidates"}
+            </span>
+            {!isMatching && <CheckCircle2 className="w-5 h-5 relative z-10 transition-transform group-hover:translate-x-1" />}
+          </button>
+        </div>
+      )}
 
     </div>
   );
