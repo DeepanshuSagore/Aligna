@@ -7,4 +7,3 @@ motor
 PyPDF2
 python-multipart
 groq
-pymongo
