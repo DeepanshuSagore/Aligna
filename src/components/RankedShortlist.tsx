@@ -15,11 +15,14 @@ import {
   MapPin,
 } from "lucide-react";
 import { type Candidate } from "./CandidateList";
+import { ScoreExplainer } from "./ScoreExplainer";
 
 export interface EngagedCandidate extends Candidate {
   interest_score: number;
   final_score: number;
   chat_logs: { sender: string; message: string }[];
+  interest_reason: string;
+  interest_factors: string[];
 }
 
 interface RankedShortlistProps {
@@ -48,6 +51,7 @@ export function RankedShortlist({ candidates }: RankedShortlistProps) {
       "Expected Salary",
       "Top Skills",
       "AI Match Reason",
+      "Interest Reason",
     ];
     csvContent += headers.join(",") + "\n";
 
@@ -64,6 +68,7 @@ export function RankedShortlist({ candidates }: RankedShortlistProps) {
         `"${c.expected_salary}"`,
         `"${c.skills.slice(0, 5).join(", ")}"`,
         `"${(c.match_reason || "").replace(/"/g, '""')}"`,
+        `"${(c.interest_reason || "").replace(/"/g, '""')}"`,
       ];
       csvContent += row.join(",") + "\n";
     });
@@ -147,6 +152,8 @@ export function RankedShortlist({ candidates }: RankedShortlistProps) {
         {sorted.map((candidate, index) => {
           const tier = getTierColor(candidate.final_score);
           const isExpanded = expandedId === candidate.id;
+          const interestReason = candidate.interest_reason ?? "";
+          const interestFactors = candidate.interest_factors ?? [];
 
           return (
             <div
@@ -233,6 +240,33 @@ export function RankedShortlist({ candidates }: RankedShortlistProps) {
               {/* Expanded: Chat Log */}
               {isExpanded && candidate.chat_logs && (
                 <div className="px-6 pb-6 pt-2 border-t border-white/5">
+                  <div className="mb-5">
+                    <ScoreExplainer
+                      scoreBreakdown={candidate.score_breakdown}
+                      matchScore={candidate.match_score}
+                    />
+                  </div>
+                  {(interestReason || interestFactors.length > 0) && (
+                    <div className="mb-5 rounded-xl border border-blue-500/20 bg-blue-500/10 p-4">
+                      <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-200">
+                        <Target className="h-3.5 w-3.5" />
+                        Interest Rationale
+                      </p>
+                      {interestReason && (
+                        <p className="text-sm leading-relaxed text-white/80">{interestReason}</p>
+                      )}
+                      {interestFactors.length > 0 && (
+                        <ul className="mt-3 space-y-1.5 text-xs text-white/65">
+                          {interestFactors.map((factor) => (
+                            <li key={factor} className="flex gap-2">
+                              <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-blue-300/80" />
+                              <span>{factor}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 mb-4">
                     <MessageSquare className="w-4 h-4 text-white/50" />
                     <span className="text-sm font-semibold text-white/70">Outreach Conversation</span>

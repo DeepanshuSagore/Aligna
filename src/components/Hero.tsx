@@ -134,6 +134,8 @@ export function Hero() {
     interest_score: number;
     final_score: number;
     chat_logs: { sender: string; message: string }[];
+    interest_reason: string;
+    interest_factors: string[];
   }) => {
     if (!candidates) return;
     const candidate = candidates.find(c => c.id === candidateId);
@@ -146,6 +148,8 @@ export function Hero() {
         interest_score: result.interest_score,
         final_score: result.final_score,
         chat_logs: result.chat_logs,
+        interest_reason: result.interest_reason,
+        interest_factors: result.interest_factors,
       });
       return newMap;
     });
@@ -186,6 +190,8 @@ export function Hero() {
             interest_score: data.interest_score,
             final_score: data.final_score,
             chat_logs: data.chat_logs,
+            interest_reason: data.interest_reason,
+            interest_factors: data.interest_factors,
           });
           return newMap;
         });

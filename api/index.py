@@ -81,12 +81,23 @@ def _is_unspecified(value: Optional[str]) -> bool:
     normalized = value.strip().lower()
     return normalized in {
         "",
+        "none",
         "not specified",
         "not mentioned",
+        "not provided",
+        "not disclosed",
         "n/a",
         "na",
+        "unspecified",
         "unknown",
         "unknown role",
+        "no preference",
+        "no location preference",
+        "location not specified",
+        "location unspecified",
+        "tbd",
+        "to be decided",
+        "to be determined",
     }
 
 def _normalize_free_text(value: str) -> str:
@@ -101,7 +112,8 @@ WORK_MODE_NOT_SPECIFIED = "Not specified"
 _WORK_MODE_NON_GEO_TOKENS = {
     "remote", "hybrid", "onsite", "on", "site", "office", "in", "only", "global", "worldwide",
     "anywhere", "any", "wfh", "wfo", "work", "from", "home", "mode", "arrangement", "preferred",
-    "preference", "location", "loc", "based",
+    "preference", "location", "loc", "based", "flexible", "either", "no", "none", "not", "specified",
+    "unspecified", "provided", "disclosed",
 }
 
 _US_STATE_CODES = {
@@ -166,6 +178,9 @@ def _normalize_work_location_preference(value: Optional[str]) -> str:
     return WORK_MODE_NOT_SPECIFIED
 
 def _extract_geographic_tokens(location_text: str) -> List[str]:
+    if _is_unspecified(location_text):
+        return []
+
     normalized = _normalize_free_text(location_text)
     if not normalized:
         return []
@@ -787,6 +802,23 @@ async def upload_jd(file: UploadFile = File(...)):
 class MatchRequest(BaseModel):
     jd_data: JobDescriptionResponse
 
+class ScoreCriterion(BaseModel):
+    key: str
+    label: str
+    weight: float
+    evaluated: bool
+    achieved_points: float
+    achieved_percent: int
+    contribution_percent: int
+    detail: str
+
+class ScoreBreakdown(BaseModel):
+    base_score: int
+    final_score: int
+    penalty_multiplier: float
+    criteria: List[ScoreCriterion]
+    penalties: List[str]
+
 class Candidate(BaseModel):
     id: str
     name: str
@@ -802,6 +834,7 @@ class Candidate(BaseModel):
     open_to_work: bool
     match_score: Optional[int] = 0
     match_reason: Optional[str] = ""
+    score_breakdown: Optional[ScoreBreakdown] = None
 
 class MatchResponse(BaseModel):
     candidates: List[Candidate]
@@ -962,28 +995,28 @@ async def match_candidates(request: MatchRequest):
         if s and s.strip() and _normalize_skill(s) not in must_norm
     ]
     jd_has_role = not _is_unspecified(jd.role)
-    jd_has_location = not _is_unspecified(jd.location)
     jd_has_geo_location = _has_geographic_location_hint(jd.location)
     jd_work_location_pref = _normalize_work_location_preference(jd.work_location_preference)
     if jd_work_location_pref == WORK_MODE_NOT_SPECIFIED:
         jd_work_location_pref = _normalize_work_location_preference(jd.location)
     jd_has_work_pref = jd_work_location_pref != WORK_MODE_NOT_SPECIFIED
+    applicable_criteria = {
+        "must": bool(jd_must_skills),
+        "good": bool(jd_good_skills),
+        "experience": jd_required_experience is not None,
+        "location": jd_has_geo_location,
+        "role": jd_has_role,
+        "work_mode": jd_has_work_pref,
+    }
 
-    if not (
-        jd_must_skills
-        or jd_good_skills
-        or jd_required_experience is not None
-        or jd_has_role
-        or jd_has_location
-        or jd_has_work_pref
-    ):
+    if not any(applicable_criteria.values()):
         raise HTTPException(
             status_code=400,
             detail="Insufficient JD signals for matching. Please refine the JD input and retry.",
         )
 
-    # Hardened weights: missing JD signals do not reduce the denominator,
-    # effectively capping the maximum possible match score for sparse JDs.
+    # Normalize scores only across criteria explicitly present in the JD.
+    # Missing signals are not applicable, so they should not cap scores or add penalties.
     weights = {
         "must": 30.0,
         "good": 20.0,
@@ -992,7 +1025,23 @@ async def match_candidates(request: MatchRequest):
         "role": 10.0,
         "work_mode": 10.0,
     }
-    max_points = sum(weights.values())
+    labels = {
+        "must": "Must-have Skills",
+        "good": "Good-to-have Skills",
+        "experience": "Experience Match",
+        "location": "Geographic Fit",
+        "role": "Role Alignment",
+        "work_mode": "Work Mode Fit",
+    }
+    unavailable_details = {
+        "must": "JD did not include must-have skills.",
+        "good": "JD did not include good-to-have skills.",
+        "experience": "JD did not include explicit experience requirement.",
+        "location": "JD did not include specific geographic constraints.",
+        "role": "JD role signal was not specific enough.",
+        "work_mode": "JD did not include work-location preference.",
+    }
+    max_points = sum(weight for key, weight in weights.items() if applicable_criteria[key])
     
     scored_candidates = []
     
@@ -1005,40 +1054,76 @@ async def match_candidates(request: MatchRequest):
 
         score_points = 0.0
         reasons = []
+        penalties = []
+        criterion_points = {key: 0.0 for key in weights}
+        criterion_evaluated = {key: False for key in weights}
+        criterion_details = {key: unavailable_details[key] for key in weights}
 
         candidate_skills = c.skills or []
 
         if jd_must_skills:
+            criterion_evaluated["must"] = True
             must_match_count = sum(
                 1 for jd_skill in jd_must_skills
                 if any(_skills_match(jd_skill, candidate_skill) for candidate_skill in candidate_skills)
             )
-            score_points += (must_match_count / len(jd_must_skills)) * weights["must"]
+            must_points = (must_match_count / len(jd_must_skills)) * weights["must"]
+            criterion_points["must"] = must_points
+            criterion_details["must"] = f"Matched {must_match_count} of {len(jd_must_skills)} must-have skills."
+            score_points += must_points
             if must_match_count > 0:
                 reasons.append(f"Matches {must_match_count}/{len(jd_must_skills)} must-have skills.")
 
         if jd_good_skills:
+            criterion_evaluated["good"] = True
             good_match_count = sum(
                 1 for jd_skill in jd_good_skills
                 if any(_skills_match(jd_skill, candidate_skill) for candidate_skill in candidate_skills)
             )
-            score_points += (good_match_count / len(jd_good_skills)) * weights["good"]
+            good_points = (good_match_count / len(jd_good_skills)) * weights["good"]
+            criterion_points["good"] = good_points
+            criterion_details["good"] = f"Matched {good_match_count} of {len(jd_good_skills)} good-to-have skills."
+            score_points += good_points
             if good_match_count > 0:
                 reasons.append(f"Matches {good_match_count}/{len(jd_good_skills)} good-to-have skills.")
 
         if jd_required_experience is not None:
+            criterion_evaluated["experience"] = True
             exp_diff = c.years_experience - jd_required_experience
             if exp_diff >= 0:
+                criterion_points["experience"] = weights["experience"]
+                criterion_details["experience"] = (
+                    f"Meets requirement with {c.years_experience} years vs required {jd_required_experience}+ years."
+                )
                 score_points += weights["experience"]
                 reasons.append("Meets experience requirement.")
             elif exp_diff >= -1:
+                criterion_points["experience"] = weights["experience"] * 0.5
+                criterion_details["experience"] = (
+                    f"Slightly below requirement ({c.years_experience} years vs {jd_required_experience}+ years)."
+                )
                 score_points += weights["experience"] * 0.5
                 reasons.append("Slightly below experience requirement.")
+            else:
+                criterion_details["experience"] = (
+                    f"Below requirement ({c.years_experience} years vs {jd_required_experience}+ years)."
+                )
 
         location_ratio = 0.0
         if jd_has_geo_location:
+            criterion_evaluated["location"] = True
             location_ratio = _location_alignment_ratio(jd.location, c.city)
-            score_points += weights["location"] * location_ratio
+            location_points = weights["location"] * location_ratio
+            criterion_points["location"] = location_points
+            if location_ratio >= 0.8:
+                criterion_details["location"] = "Strong location alignment with JD geography."
+            elif location_ratio >= 0.5:
+                criterion_details["location"] = "Partial location alignment with JD geography."
+            elif location_ratio > 0:
+                criterion_details["location"] = "Weak location alignment with JD geography."
+            else:
+                criterion_details["location"] = "No geographic overlap with JD location."
+            score_points += location_points
             if location_ratio >= 0.8:
                 reasons.append("Location aligns strongly with the JD geography.")
             elif location_ratio >= 0.5:
@@ -1047,40 +1132,75 @@ async def match_candidates(request: MatchRequest):
         work_mode_ratio = 0.0
         candidate_work_pref = _normalize_work_location_preference(c.work_location_preference or c.remote_preference)
         if jd_has_work_pref:
+            criterion_evaluated["work_mode"] = True
             work_mode_ratio = _work_mode_alignment_ratio(jd_work_location_pref, candidate_work_pref)
-            score_points += weights["work_mode"] * work_mode_ratio
+            work_mode_points = weights["work_mode"] * work_mode_ratio
+            criterion_points["work_mode"] = work_mode_points
+            if work_mode_ratio >= 0.8:
+                criterion_details["work_mode"] = "Work mode aligns strongly with JD preference."
+            elif work_mode_ratio >= 0.4:
+                criterion_details["work_mode"] = "Work mode partially aligns with JD preference."
+            else:
+                criterion_details["work_mode"] = "Work mode does not align with JD preference."
+            score_points += work_mode_points
             if work_mode_ratio >= 0.8:
                 reasons.append("Work-location preference aligns well.")
             elif work_mode_ratio >= 0.4:
                 reasons.append("Work-location preference is a partial match.")
 
         if jd_has_role:
+            criterion_evaluated["role"] = True
             role_ratio = _role_overlap_ratio(jd.role, c.role)
             if role_ratio >= 0.6:
+                criterion_points["role"] = weights["role"]
+                criterion_details["role"] = "Strong role token overlap."
                 score_points += weights["role"]
                 reasons.append("Strong role alignment.")
             elif role_ratio >= 0.3:
+                criterion_points["role"] = weights["role"] * 0.6
+                criterion_details["role"] = "Partial role token overlap."
                 score_points += weights["role"] * 0.6
                 reasons.append("Partial role alignment.")
+            else:
+                criterion_details["role"] = "Low role token overlap."
 
+        # Keep mismatches inside the weighted criteria. A second multiplier is only
+        # defensible when the JD marks a constraint as hard/non-negotiable.
         penalty_multiplier = 1.0
-        if jd_has_geo_location:
-            if location_ratio == 0:
-                penalty_multiplier *= 0.55
-                reasons.append("Location does not match the requested geography.")
-            elif location_ratio < 0.6:
-                penalty_multiplier *= 0.85
 
-        if jd_has_work_pref:
-            if work_mode_ratio == 0:
-                penalty_multiplier *= 0.7
-                reasons.append("Work-location preference does not align.")
-            elif work_mode_ratio < 0.6:
-                penalty_multiplier *= 0.9
-
-        normalized_score = int(round((score_points / max_points) * 100 * penalty_multiplier))
-        c.match_score = _clamp_score(normalized_score, default=0)
+        base_score = int(round((score_points / max_points) * 100)) if max_points > 0 else 0
+        final_score = int(round(base_score * penalty_multiplier))
+        c.match_score = _clamp_score(final_score, default=0)
         c.match_reason = " ".join(reasons).strip() or "Limited alignment based on currently extracted JD signals."
+        c.score_breakdown = ScoreBreakdown(
+            base_score=_clamp_score(base_score, default=0),
+            final_score=c.match_score,
+            penalty_multiplier=round(penalty_multiplier, 2),
+            criteria=[
+                ScoreCriterion(
+                    key=key,
+                    label=labels[key],
+                    weight=weights[key],
+                    evaluated=criterion_evaluated[key],
+                    achieved_points=round(criterion_points[key], 2),
+                    achieved_percent=_clamp_score(
+                        int(round((criterion_points[key] / weights[key]) * 100))
+                        if criterion_evaluated[key] and weights[key] > 0
+                        else 0,
+                        default=0,
+                    ),
+                    contribution_percent=_clamp_score(
+                        int(round((criterion_points[key] / max_points) * 100))
+                        if criterion_evaluated[key] and max_points > 0
+                        else 0,
+                        default=0,
+                    ),
+                    detail=criterion_details[key],
+                )
+                for key in weights
+            ],
+            penalties=penalties,
+        )
         scored_candidates.append(c)
         
     # Sort and get top 10
@@ -1132,11 +1252,157 @@ class SimulateInterestResponse(BaseModel):
     chat_logs: List[ChatMessage]
     interest_score: int
     final_score: int
+    interest_reason: str = ""
+    interest_factors: List[str] = []
+
+def _engagement_message_count(match_score) -> int:
+    score = _clamp_score(match_score, default=0)
+    if score < 55:
+        return 3
+    if score < 75:
+        return 4
+    return 5
+
+def _compact_chat_message(message: str, max_chars: int = 220) -> str:
+    compact = re.sub(r'\s+', ' ', str(message or "")).strip()
+    if len(compact) <= max_chars:
+        return compact
+
+    clipped = compact[:max_chars - 3].rsplit(" ", 1)[0].rstrip(" .,")
+    return f"{clipped}..." if clipped else compact[:max_chars].rstrip()
+
+def _normalize_chat_sender(sender: str, candidate_name: str) -> str:
+    normalized = (sender or "").strip()
+    lowered = normalized.lower()
+    if any(token in lowered for token in ("scout", "recruiter", "ai")):
+        return "ScoutIQ"
+    return candidate_name
+
+def _build_synthetic_chat_logs(cand: Candidate, jd: JobDescriptionResponse, message_count: int) -> List[ChatMessage]:
+    top_skills = ", ".join((cand.skills or [])[:2])
+    skill_phrase = f"your {top_skills} background" if top_skills else "your background"
+    job_context = jd.location if not _is_unspecified(jd.location) else jd.work_location_preference
+    job_context = "" if _is_unspecified(job_context) else f" ({job_context})"
+
+    messages = [
+        ChatMessage(
+            sender="ScoutIQ",
+            message=_compact_chat_message(
+                f"Hi {cand.name}, I'm reaching out about a {jd.role} role{job_context}. {skill_phrase} looked relevant."
+            ),
+        ),
+        ChatMessage(
+            sender=cand.name,
+            message=(
+                "Thanks. I'm open to hearing more - what's the scope and setup?"
+                if cand.open_to_work
+                else "Thanks for reaching out. I'm not actively looking, but I can listen if it's a strong fit."
+            ),
+        ),
+        ChatMessage(
+            sender="ScoutIQ",
+            message=_compact_chat_message(
+                "Makes sense. The team is checking fit on skills, timing, compensation, and work setup before scheduling calls."
+            ),
+        ),
+        ChatMessage(
+            sender=cand.name,
+            message=(
+                "That helps. I'd want to understand team ownership, compensation range, and interview steps."
+                if cand.open_to_work
+                else "That helps. Timing may be tough, so I'd need the brief before committing to a call."
+            ),
+        ),
+        ChatMessage(
+            sender="ScoutIQ",
+            message="Fair. I'll send a concise brief and a couple of optional times so you can decide.",
+        ),
+    ]
+    return messages[:message_count]
+
+def _normalize_chat_logs(raw_chat, cand: Candidate, jd: JobDescriptionResponse, message_count: int) -> List[ChatMessage]:
+    fallback_logs = _build_synthetic_chat_logs(cand, jd, message_count)
+    normalized_chat_logs: List[ChatMessage] = []
+
+    if isinstance(raw_chat, list):
+        for item in raw_chat[:message_count]:
+            if not isinstance(item, dict):
+                continue
+            sender = _normalize_chat_sender(str(item.get("sender", "")), cand.name)
+            message = _compact_chat_message(str(item.get("message", "")))
+            if not message:
+                continue
+            normalized_chat_logs.append(ChatMessage(sender=sender, message=message))
+
+    if not normalized_chat_logs:
+        return fallback_logs
+
+    if len(normalized_chat_logs) < message_count:
+        normalized_chat_logs.extend(fallback_logs[len(normalized_chat_logs):message_count])
+
+    return normalized_chat_logs[:message_count]
+
+def _build_interest_explanation(cand: Candidate, jd: JobDescriptionResponse, interest_score: int, match_score: int) -> tuple[str, List[str]]:
+    factors: List[str] = []
+
+    if cand.open_to_work:
+        factors.append("Candidate is open to work, which increases likely responsiveness.")
+    else:
+        factors.append("Candidate is not actively open to work, which lowers likely responsiveness.")
+
+    if match_score >= 75:
+        factors.append("Strong match score makes the role feel relevant to the candidate.")
+    elif match_score >= 55:
+        factors.append("Moderate match score suggests some fit, but not a standout match.")
+    else:
+        factors.append("Lower match score suggests weaker role fit and lower likely interest.")
+
+    jd_work_mode = _normalize_work_location_preference(jd.work_location_preference or jd.location)
+    cand_work_mode = _normalize_work_location_preference(cand.work_location_preference or cand.remote_preference)
+    if jd_work_mode != WORK_MODE_NOT_SPECIFIED:
+        work_ratio = _work_mode_alignment_ratio(jd_work_mode, cand_work_mode)
+        if work_ratio >= 0.8:
+            factors.append("Work setup aligns with the candidate's stated preference.")
+        elif work_ratio > 0:
+            factors.append("Work setup is only a partial fit for the candidate.")
+        else:
+            factors.append("Work setup conflicts with the candidate's preference.")
+
+    if interest_score >= 70:
+        reason = "High simulated interest because the candidate appears reachable and the role signals fit their profile."
+    elif interest_score >= 40:
+        reason = "Moderate simulated interest because there are useful fit signals, but also some uncertainty."
+    else:
+        reason = "Low simulated interest because the candidate has weak fit or availability signals."
+
+    return reason, factors[:3]
+
+def _normalize_interest_explanation(raw_reason, raw_factors, cand: Candidate, jd: JobDescriptionResponse, interest_score: int, match_score: int) -> tuple[str, List[str]]:
+    fallback_reason, fallback_factors = _build_interest_explanation(cand, jd, interest_score, match_score)
+    reason = _compact_chat_message(str(raw_reason or ""), max_chars=240) or fallback_reason
+
+    factors: List[str] = []
+    if isinstance(raw_factors, list):
+        for factor in raw_factors[:3]:
+            if isinstance(factor, dict):
+                text = factor.get("detail") or factor.get("reason") or factor.get("label") or ""
+            else:
+                text = str(factor or "")
+            compact = _compact_chat_message(text, max_chars=160)
+            if compact:
+                factors.append(compact)
+
+    if not factors:
+        factors = fallback_factors
+
+    return reason, factors[:3]
 
 @app.post("/api/simulate-interest", response_model=SimulateInterestResponse)
 async def simulate_interest(request: SimulateInterestRequest):
     cand = request.candidate
     jd = request.jd_data
+    match_score = _clamp_score(cand.match_score, default=0)
+    message_count = _engagement_message_count(match_score)
     
     prompt = f"""You are a hiring simulator. Simulate a brief outreach conversation between an AI Recruiter (ScoutIQ) and a tech Candidate.
 
@@ -1152,15 +1418,21 @@ Candidate Profile:
 Job: {jd.role} in {jd.location}
 JD Work Location Preference: {jd.work_location_preference}
 
-Write a 3-message chat and assign an interest_score (0-100).
+Write exactly {message_count} short chat messages and assign an interest_score (0-100).
+Make it feel like a natural back-and-forth text thread: concise, realistic, and not paragraph-like.
+Alternate senders, starting with ScoutIQ. Use only "ScoutIQ" and "{cand.name}" as sender values.
+Each message should be 1-2 short sentences and under 220 characters.
+If the candidate is a weaker match, keep the conversation brief and less enthusiastic.
+Also explain the interest score with one concise interest_reason and 2-3 short interest_factors.
 Return ONLY valid JSON:
 {{
     "chat_logs": [
         {{"sender": "ScoutIQ", "message": "..."}},
-        {{"sender": "{cand.name}", "message": "..."}},
-        {{"sender": "ScoutIQ", "message": "..."}}
+        {{"sender": "{cand.name}", "message": "..."}}
     ],
-    "interest_score": <int>
+    "interest_score": <int>,
+    "interest_reason": "...",
+    "interest_factors": ["...", "..."]
 }}"""
 
     # Try Groq model pool first, then Gemini, then deterministic fallback
@@ -1178,32 +1450,24 @@ Return ONLY valid JSON:
             data = json.loads(_strip_code_fences(text))
             interest = _clamp_score(data.get("interest_score", 50), default=50)
 
-            raw_chat = data.get("chat_logs", [])
-            normalized_chat_logs: List[ChatMessage] = []
-            if isinstance(raw_chat, list):
-                for item in raw_chat[:6]:
-                    if not isinstance(item, dict):
-                        continue
-                    sender = str(item.get("sender", "Candidate")).strip()[:40] or "Candidate"
-                    message = str(item.get("message", "")).strip()
-                    if not message:
-                        continue
-                    normalized_chat_logs.append(ChatMessage(sender=sender, message=message))
+            normalized_chat_logs = _normalize_chat_logs(data.get("chat_logs", []), cand, jd, message_count)
+            interest_reason, interest_factors = _normalize_interest_explanation(
+                data.get("interest_reason") or data.get("reason"),
+                data.get("interest_factors") or data.get("factors"),
+                cand,
+                jd,
+                interest,
+                match_score,
+            )
 
-            if not normalized_chat_logs:
-                normalized_chat_logs = [
-                    ChatMessage(sender="ScoutIQ", message=f"Hi {cand.name}, we'd love to discuss our {jd.role} opportunity with you."),
-                    ChatMessage(sender=cand.name, message="Thanks for sharing details. I am interested in learning more."),
-                    ChatMessage(sender="ScoutIQ", message="Great, let's schedule a quick call to explore fit and next steps."),
-                ]
-
-            match_score = _clamp_score(cand.match_score, default=0)
             final = _clamp_score(round(0.7 * match_score + 0.3 * interest), default=0)
             
             return SimulateInterestResponse(
                 chat_logs=normalized_chat_logs,
                 interest_score=interest,
-                final_score=final
+                final_score=final,
+                interest_reason=interest_reason,
+                interest_factors=interest_factors,
             )
         except json.JSONDecodeError as e:
             print(f"JSON parse error: {e}")
@@ -1221,15 +1485,13 @@ Return ONLY valid JSON:
         interest = max(interest - 12, 10)
 
     interest = _clamp_score(interest, default=50)
-    match_score = _clamp_score(cand.match_score, default=0)
     final = _clamp_score(round(0.7 * match_score + 0.3 * interest), default=0)
+    interest_reason, interest_factors = _build_interest_explanation(cand, jd, interest, match_score)
     
     return SimulateInterestResponse(
-        chat_logs=[
-            ChatMessage(sender="ScoutIQ", message=f"Hi {cand.name}! We found your profile impressive and think you'd be a great fit for our {jd.role} position. Your background in {', '.join(cand.skills[:3])} really stands out."),
-            ChatMessage(sender=cand.name, message=f"{'Thanks for reaching out! I am currently open to new opportunities and this sounds interesting.' if cand.open_to_work else 'I appreciate the outreach. I am not actively looking right now, but I would be open to hearing more about the role.'}"),
-            ChatMessage(sender="ScoutIQ", message=f"Great to hear! I will send over the full job details and we can schedule a call to discuss further. Looking forward to connecting!")
-        ],
+        chat_logs=_build_synthetic_chat_logs(cand, jd, message_count),
         interest_score=interest,
-        final_score=final
+        final_score=final,
+        interest_reason=interest_reason,
+        interest_factors=interest_factors,
     )

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { UserCircle2, MapPin, Briefcase, ChevronRight, Download } from "lucide-react";
 import { SkillPills } from "./SkillPills";
+import { ScoreExplainer, type ScoreBreakdown } from "./ScoreExplainer";
 
 export interface Candidate {
   id: string;
@@ -18,6 +19,7 @@ export interface Candidate {
   open_to_work: boolean;
   match_score: number;
   match_reason: string;
+  score_breakdown?: ScoreBreakdown | null;
 }
 
 interface CandidateListProps {
@@ -28,6 +30,7 @@ interface CandidateListProps {
 
 export function CandidateList({ candidates, onEngage, engagedIds }: CandidateListProps) {
   const [includeAIReason, setIncludeAIReason] = useState(false);
+  const [expandedScoreId, setExpandedScoreId] = useState<string | null>(null);
 
   if (!candidates || candidates.length === 0) return null;
 
@@ -100,7 +103,9 @@ export function CandidateList({ candidates, onEngage, engagedIds }: CandidateLis
       </div>
 
       <div className="flex flex-col gap-4">
-        {candidates.map((candidate, index) => (
+        {candidates.map((candidate, index) => {
+          const isScoreExpanded = expandedScoreId === candidate.id;
+          return (
           <div 
             key={candidate.id}
             className="group relative glassmorphism rounded-[24px] p-6 border border-white/10 hover:border-white/20 transition-all duration-300 hover:shadow-[0_15px_40px_rgba(0,0,0,0.4)] hover:-translate-y-1 flex flex-col md:flex-row gap-6 items-start md:items-center"
@@ -168,6 +173,18 @@ export function CandidateList({ candidates, onEngage, engagedIds }: CandidateLis
               <p className="text-xs text-white/50 mt-1 italic">
                 AI Note: {candidate.match_reason}
               </p>
+              <button
+                onClick={() => setExpandedScoreId(isScoreExpanded ? null : candidate.id)}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                {isScoreExpanded ? "Hide Score Explainer" : "Score Explainer"}
+              </button>
+
+              {isScoreExpanded && (
+                <div className="mt-4">
+                  <ScoreExplainer scoreBreakdown={candidate.score_breakdown} matchScore={candidate.match_score} />
+                </div>
+              )}
             </div>
 
             {/* Actions */}
@@ -190,7 +207,8 @@ export function CandidateList({ candidates, onEngage, engagedIds }: CandidateLis
               </span>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

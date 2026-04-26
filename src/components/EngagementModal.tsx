@@ -14,6 +14,8 @@ interface EngagementModalProps {
     interest_score: number;
     final_score: number;
     chat_logs: ChatMessage[];
+    interest_reason: string;
+    interest_factors: string[];
   }) => void;
 }
 
@@ -26,6 +28,8 @@ interface SimulationResult {
   chat_logs: ChatMessage[];
   interest_score: number;
   final_score: number;
+  interest_reason: string;
+  interest_factors: string[];
 }
 
 export function EngagementModal({ isOpen, onClose, candidate, jdData, onEngagementComplete }: EngagementModalProps) {
@@ -61,6 +65,8 @@ export function EngagementModal({ isOpen, onClose, candidate, jdData, onEngageme
             interest_score: data.interest_score,
             final_score: data.final_score,
             chat_logs: data.chat_logs,
+            interest_reason: data.interest_reason,
+            interest_factors: data.interest_factors,
           });
         }
       } catch (err) {
@@ -85,6 +91,8 @@ export function EngagementModal({ isOpen, onClose, candidate, jdData, onEngageme
 
   const safeInterestScore = result ? Math.max(0, Math.min(result.interest_score, 100)) : 0;
   const safeFinalScore = result ? Math.max(0, Math.min(result.final_score, 100)) : 0;
+  const interestReason = result?.interest_reason ?? "";
+  const interestFactors = result?.interest_factors ?? [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
@@ -153,6 +161,28 @@ export function EngagementModal({ isOpen, onClose, candidate, jdData, onEngageme
                   </div>
                 </div>
               </div>
+
+              {(interestReason || interestFactors.length > 0) && (
+                <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4">
+                  <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-200">
+                    <Target className="h-3.5 w-3.5" />
+                    Interest Rationale
+                  </p>
+                  {interestReason && (
+                    <p className="text-sm leading-relaxed text-white/80">{interestReason}</p>
+                  )}
+                  {interestFactors.length > 0 && (
+                    <ul className="mt-3 space-y-1.5 text-xs text-white/65">
+                      {interestFactors.map((factor) => (
+                        <li key={factor} className="flex gap-2">
+                          <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-blue-300/80" />
+                          <span>{factor}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
 
               {/* Chat Log */}
               <div className="flex flex-col gap-4 mt-2">
