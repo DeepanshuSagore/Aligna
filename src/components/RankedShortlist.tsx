@@ -182,7 +182,7 @@ export function RankedShortlist({ candidates }: RankedShortlistProps) {
           return (
             <div
               key={candidate.id}
-              ref={(el) => (itemRefs.current[candidate.id] = el)}
+              ref={(el) => { itemRefs.current[candidate.id] = el; }}
               className={`glassmorphism rounded-[20px] border transition-all duration-300 hover:shadow-[0_15px_40px_rgba(0,0,0,0.4)] ${
                 index === 0
                   ? "border-[#5AE14C]/30 shadow-[0_0_30px_rgba(90,225,76,0.1)]"

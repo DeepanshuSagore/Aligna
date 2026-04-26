@@ -130,7 +130,7 @@ export function CandidateList({ candidates, onEngage, engagedIds }: CandidateLis
           return (
           <div 
             key={candidate.id}
-            ref={(el) => (itemRefs.current[candidate.id] = el)}
+            ref={(el) => { itemRefs.current[candidate.id] = el; }}
             className="group relative glassmorphism rounded-[24px] p-6 border border-white/10 hover:border-white/20 transition-all duration-300 hover:shadow-[0_15px_40px_rgba(0,0,0,0.4)] hover:-translate-y-1 flex flex-col md:flex-row gap-6 items-start md:items-center"
           >
             {/* Match Score Ring */}
