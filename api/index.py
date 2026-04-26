@@ -3,6 +3,7 @@ import json
 import re
 import io
 import asyncio
+import time
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -23,26 +24,81 @@ MOCK_CANDIDATES_PATH = os.path.join(PROJECT_ROOT, "mock_candidates.json")
 GEMINI_MODEL = 'gemini-2.0-flash'
 
 # Groq config - used for simulation (high volume, fast, generous free tier)
-GROQ_MODEL = 'llama-3.3-70b-versatile'
+DEFAULT_GROQ_MODELS = [
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
+    'gemma2-9b-it',
+]
+GROQ_MODELS = [
+    model.strip()
+    for model in os.getenv('GROQ_MODELS', ','.join(DEFAULT_GROQ_MODELS)).split(',')
+    if model.strip()
+]
+GROQ_RATE_LIMIT_COOLDOWN_SECONDS = int(os.getenv('GROQ_RATE_LIMIT_COOLDOWN_SECONDS', '90'))
+groq_model_cooldown_until: dict[str, float] = {}
+groq_rr_index = 0
 groq_key = os.getenv("GROQ_API_KEY")
 groq_client = None
 if groq_key:
     groq_client = Groq(api_key=groq_key)
-    print(f"Groq configured with model: {GROQ_MODEL}")
+    print(f"Groq configured with models: {', '.join(GROQ_MODELS)}")
 else:
     print("WARNING: GROQ_API_KEY not found. Will fall back to Gemini for simulations.")
 
+def _is_groq_rate_limit_error(error_text: str) -> bool:
+    lowered = error_text.lower()
+    markers = ('429', 'rate limit', 'too many requests', 'quota', 'resource exhausted')
+    return any(marker in lowered for marker in markers)
+
+def _extract_retry_delay_seconds(error_text: str) -> Optional[int]:
+    # Example message: "Please retry in 24.9s"
+    match = re.search(r'(?:retry|try again)[^0-9]*(\d+(?:\.\d+)?)\s*(?:s|sec|second)', error_text.lower())
+    if not match:
+        return None
+    return max(1, int(float(match.group(1))))
+
 async def call_groq(prompt: str) -> str:
-    """Call Groq API for fast LLM inference."""
+    """Call Groq API with model failover and per-model cooldown."""
+    global groq_rr_index
     if not groq_client:
         raise Exception("Groq client not configured")
-    response = groq_client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-        max_tokens=1024,
-    )
-    return response.choices[0].message.content.strip()
+
+    if not GROQ_MODELS:
+        raise Exception("No Groq models configured")
+
+    now = time.time()
+    models_in_order = GROQ_MODELS[groq_rr_index:] + GROQ_MODELS[:groq_rr_index]
+    last_error = None
+
+    for model_name in models_in_order:
+        cooldown_until = groq_model_cooldown_until.get(model_name, 0)
+        if cooldown_until > now:
+            continue
+
+        try:
+            response = groq_client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=1024,
+            )
+            # Round-robin on success to spread usage across models.
+            groq_rr_index = (GROQ_MODELS.index(model_name) + 1) % len(GROQ_MODELS)
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            last_error = e
+            error_text = str(e)
+            if _is_groq_rate_limit_error(error_text):
+                retry_delay = _extract_retry_delay_seconds(error_text) or GROQ_RATE_LIMIT_COOLDOWN_SECONDS
+                groq_model_cooldown_until[model_name] = time.time() + retry_delay
+                print(f"Groq model {model_name} rate limited. Cooling down for {retry_delay}s.")
+            else:
+                print(f"Groq model {model_name} failed: {e}")
+
+    if last_error:
+        raise Exception(f"All Groq models unavailable. Last error: {last_error}")
+
+    raise Exception("All Groq models are in cooldown. Try again shortly.")
 
 async def call_gemini_with_retry(prompt: str, max_retries: int = 3) -> str:
     """Call Gemini API with retry logic for rate limits."""
@@ -430,7 +486,7 @@ Return ONLY valid JSON:
     "interest_score": <int>
 }}"""
 
-    # Try Groq first (fast, generous free tier), then Gemini, then fallback
+    # Try Groq model pool first, then Gemini, then deterministic fallback
     text = None
     for provider, call_fn in [("Groq", call_groq), ("Gemini", call_gemini_with_retry)]:
         try:
