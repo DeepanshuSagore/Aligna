@@ -15,13 +15,29 @@ const JD_SAMPLES = [
   "We are hiring a Backend Engineer (Node.js) with 3-6 years of experience building scalable APIs, working with PostgreSQL, and deploying services on AWS. Experience with microservices and observability is preferred.",
   "Seeking a Data Analyst with 2+ years of experience in SQL, Python, and dashboarding tools like Looker or Tableau. The role focuses on product metrics, cohort analysis, and executive reporting.",
   "Hiring a Product Designer with 3+ years of SaaS experience. Must be strong in end-to-end design, prototyping in Figma, and collaborating closely with PMs and engineers to ship polished user experiences.",
+  "We need a Full-Stack Engineer with 4+ years in React, Node.js, and MongoDB. You will own features end-to-end, collaborate with product, and improve performance, reliability, and developer experience.",
+  "Hiring a DevOps Engineer with hands-on experience in Kubernetes, Terraform, and CI/CD pipelines. You will help scale our AWS infrastructure, enforce security best practices, and reduce deployment lead time.",
+  "Looking for a QA Automation Engineer with 3+ years of experience in Playwright or Cypress, API testing, and test strategy. Experience with flaky test reduction and CI integration is a big plus.",
+  "Seeking a Mobile Engineer (React Native) with 3-5 years of app development experience. Must be comfortable with performance profiling, native module integration, and shipping to both iOS and Android stores.",
+  "We are hiring a Machine Learning Engineer with strong Python skills and experience deploying LLM-powered features. Familiarity with vector databases, prompt optimization, and evaluation frameworks is required.",
+  "Looking for a Technical Program Manager with experience leading cross-functional product launches. The role requires strong stakeholder communication, dependency management, and data-driven execution.",
 ];
+
+const shuffleArray = <T,>(items: T[]): T[] => {
+  const shuffled = [...items];
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
 
 export function JDInputCard({ onAnalyzeText, onAnalyzeFile, isLoading }: JDInputCardProps) {
   const [jdText, setJdText] = useState("");
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [randomizedSamples] = useState(() => shuffleArray(JD_SAMPLES));
   const [sampleIndex, setSampleIndex] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,8 +65,8 @@ export function JDInputCard({ onAnalyzeText, onAnalyzeFile, isLoading }: JDInput
   };
 
   const handleSample = () => {
-    setJdText(JD_SAMPLES[sampleIndex]);
-    setSampleIndex((prev) => (prev + 1) % JD_SAMPLES.length);
+    setJdText(randomizedSamples[sampleIndex]);
+    setSampleIndex((prev) => (prev + 1) % randomizedSamples.length);
     setSelectedFile(null);
     setError("");
   };
