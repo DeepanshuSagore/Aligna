@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AuroraBackground } from "@/components/ui/AuroraBackground";
 import { Navbar } from "@/components/Navbar";
-import { Briefcase, ChartColumnBig, Globe2, RefreshCw, Users } from "lucide-react";
+import { Briefcase, ChartColumnBig, Globe2, RefreshCw, Search, Users } from "lucide-react";
 
 interface CountByLabel {
   label: string;
@@ -17,6 +17,8 @@ interface CandidateStatsResponse {
   remote_friendly_candidates: number;
   average_years_experience: number;
   top_roles: CountByLabel[];
+  role_counts: CountByLabel[];
+  role_family_counts: CountByLabel[];
   top_cities: CountByLabel[];
 }
 
@@ -60,6 +62,7 @@ export default function AnalyticsPage() {
   const [stats, setStats] = useState<CandidateStatsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [roleQuery, setRoleQuery] = useState("");
 
   const fetchStats = async () => {
     const response = await fetch("/api/candidates/stats", { cache: "no-store" });
@@ -111,6 +114,18 @@ export default function AnalyticsPage() {
       isMounted = false;
     };
   }, []);
+
+  const filteredRoleCounts = useMemo(() => {
+    if (!stats) return [];
+    const normalizedQuery = roleQuery.trim().toLowerCase();
+    if (!normalizedQuery) return stats.role_counts;
+    return stats.role_counts.filter((row) => row.label.toLowerCase().includes(normalizedQuery));
+  }, [stats, roleQuery]);
+
+  const roleCoverageCount = useMemo(
+    () => (stats?.role_counts ?? []).reduce((sum, row) => sum + row.count, 0),
+    [stats]
+  );
 
   return (
     <main className="relative min-h-screen overflow-x-hidden">
@@ -184,9 +199,46 @@ export default function AnalyticsPage() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <BreakdownSection title="Top Roles" rows={stats.top_roles} accentClass="bg-[#5AE14C]" />
+              <BreakdownSection title="Role Families" rows={stats.role_family_counts} accentClass="bg-[#5AE14C]" />
               <BreakdownSection title="Top Cities" rows={stats.top_cities} accentClass="bg-cyan-400" />
             </div>
+
+            <section className="mt-6 glassmorphism rounded-2xl border border-white/10 p-5">
+              <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-white/60">Exact Role Counts</h2>
+                  <p className="text-xs text-white/50">
+                    Coverage check: {roleCoverageCount}/{stats.total_candidates} candidates represented
+                  </p>
+                </div>
+
+                <label className="relative w-full md:w-[320px]">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                  <input
+                    value={roleQuery}
+                    onChange={(event) => setRoleQuery(event.target.value)}
+                    placeholder="Search role counts"
+                    className="w-full rounded-xl border border-white/15 bg-white/5 py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-white/40 outline-none transition-colors focus:border-[#5AE14C]/60"
+                  />
+                </label>
+              </div>
+
+              <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                {filteredRoleCounts.length === 0 && (
+                  <p className="text-sm text-white/60">No roles matched the current search.</p>
+                )}
+
+                {filteredRoleCounts.map((row) => (
+                  <div
+                    key={`role-count-${row.label}`}
+                    className="flex items-center justify-between rounded-lg border border-white/8 bg-white/5 px-3 py-2 text-sm"
+                  >
+                    <span className="text-white/80">{row.label}</span>
+                    <span className="font-semibold text-white">{row.count}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
           </>
         )}
       </div>

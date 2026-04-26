@@ -92,6 +92,121 @@ def _is_unspecified(value: Optional[str]) -> bool:
 def _normalize_free_text(value: str) -> str:
     return re.sub(r'[^a-z0-9+#.\s]+', ' ', (value or '').lower()).strip()
 
+WORK_MODE_REMOTE_ONLY = "Remote only"
+WORK_MODE_ONSITE_ONLY = "On-site only"
+WORK_MODE_HYBRID = "Hybrid"
+WORK_MODE_FLEXIBLE = "Flexible"
+WORK_MODE_NOT_SPECIFIED = "Not specified"
+
+_WORK_MODE_NON_GEO_TOKENS = {
+    "remote", "hybrid", "onsite", "on", "site", "office", "in", "only", "global", "worldwide",
+    "anywhere", "any", "wfh", "wfo", "work", "from", "home", "mode", "arrangement", "preferred",
+    "preference", "location", "loc", "based",
+}
+
+_US_STATE_CODES = {
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+    "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+    "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+    "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+    "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+    "DC",
+}
+
+_LOCATION_ALIAS_GROUPS = [
+    {
+        "aliases": {"us", "usa", "america", "united states", "united states of america"},
+        "tokens": {"us", "usa", "america"},
+    },
+    {
+        "aliases": {"uk", "united kingdom", "great britain", "britain", "england"},
+        "tokens": {"uk", "britain", "england"},
+    },
+    {
+        "aliases": {"uae", "united arab emirates"},
+        "tokens": {"uae", "emirates"},
+    },
+]
+
+_LOW_SIGNAL_LOCATION_TOKENS = {
+    "united", "states", "kingdom", "arab", "republic", "state", "province",
+}
+
+def _normalize_work_location_preference(value: Optional[str]) -> str:
+    text = _normalize_free_text(value or "")
+    if not text or text in {"na", "n a", "none", "not specified", "unspecified", "unknown"}:
+        return WORK_MODE_NOT_SPECIFIED
+
+    text_tokens = set(text.split())
+    has_remote = any(token in text for token in ("remote", "wfh", "work from home", "home based"))
+    has_hybrid = "hybrid" in text
+    has_onsite = any(token in text for token in ("onsite", "on site", "in office", "office", "wfo", "offline"))
+    has_flexible = (
+        "any" in text_tokens
+        or "flexible" in text_tokens
+        or "either" in text_tokens
+        or "anywhere" in text_tokens
+        or "location flexible" in text
+    )
+    has_remote_only_signal = any(token in text for token in ("remote only", "fully remote", "100 remote", "exclusive remote"))
+
+    if has_hybrid:
+        return WORK_MODE_HYBRID
+    if has_flexible and not (has_remote or has_onsite):
+        return WORK_MODE_FLEXIBLE
+    if has_onsite and has_remote:
+        return WORK_MODE_HYBRID
+    if has_onsite:
+        return WORK_MODE_ONSITE_ONLY
+    if has_remote or has_remote_only_signal:
+        return WORK_MODE_REMOTE_ONLY
+    if has_flexible:
+        return WORK_MODE_FLEXIBLE
+
+    return WORK_MODE_NOT_SPECIFIED
+
+def _extract_geographic_tokens(location_text: str) -> List[str]:
+    normalized = _normalize_free_text(location_text)
+    if not normalized:
+        return []
+    base_tokens = {
+        token for token in normalized.split()
+        if token and token not in _WORK_MODE_NON_GEO_TOKENS
+    }
+    normalized_tokens = set(normalized.split())
+
+    for group in _LOCATION_ALIAS_GROUPS:
+        aliases = group["aliases"]
+        alias_matched = False
+        for alias in aliases:
+            alias = alias.strip().lower()
+            if not alias:
+                continue
+            if " " in alias:
+                if alias in normalized:
+                    alias_matched = True
+                    break
+            else:
+                if alias in normalized_tokens:
+                    alias_matched = True
+                    break
+
+        if alias_matched:
+            base_tokens.update(group["tokens"])
+
+    # If city has a US state code suffix (e.g. "Seattle, WA"), infer US geography.
+    location_parts = [part.strip().upper() for part in re.split(r"[,()]", location_text or "") if part.strip()]
+    if any(part in _US_STATE_CODES for part in location_parts):
+        for group in _LOCATION_ALIAS_GROUPS:
+            if "usa" in group["tokens"]:
+                base_tokens.update(group["tokens"])
+                break
+
+    return sorted(token for token in base_tokens if token not in _LOW_SIGNAL_LOCATION_TOKENS)
+
+def _has_geographic_location_hint(location_text: str) -> bool:
+    return len(_extract_geographic_tokens(location_text)) > 0
+
 def _normalize_candidate_doc(doc: dict) -> dict:
     normalized = dict(doc)
     raw_id = normalized.pop("_id", None)
@@ -117,6 +232,10 @@ def _normalize_candidate_doc(doc: dict) -> dict:
         normalized["years_experience"] = int(float(normalized.get("years_experience", 0)))
     except (TypeError, ValueError):
         normalized["years_experience"] = 0
+
+    normalized_pref = _normalize_work_location_preference(str(normalized.get("remote_preference", "")))
+    normalized["remote_preference"] = normalized_pref
+    normalized["work_location_preference"] = normalized_pref
 
     normalized["match_score"] = _clamp_score(normalized.get("match_score", 0))
     normalized["match_reason"] = str(normalized.get("match_reason", "") or "")
@@ -275,6 +394,7 @@ class JobDescriptionResponse(BaseModel):
     must_have_skills: List[str]
     good_to_have_skills: List[str]
     location: str
+    work_location_preference: str = WORK_MODE_NOT_SPECIFIED
     seniority: str
     summary: str
     parse_success: bool = True
@@ -303,6 +423,38 @@ ROLE_STOPWORDS = {
     "and", "for", "the", "with", "in", "to", "of", "a", "an", "engineer", "developer",
     "specialist", "position", "role", "required", "need", "hiring", "looking"
 }
+
+def _role_family_label(role: str) -> str:
+    role_l = _normalize_free_text(role)
+    role_tokens = set(role_l.split())
+
+    if any(token in role_l for token in ("security", "infosec", "cyber")):
+        return "Security"
+    if (
+        "data" in role_tokens
+        or "scientist" in role_tokens
+        or "analyst" in role_tokens
+        or "ml" in role_tokens
+        or "ai" in role_tokens
+        or "machine learning" in role_l
+        or "analytics" in role_l
+    ):
+        return "Data & AI"
+    if any(token in role_l for token in ("backend", "api", "server", "platform engineer")):
+        return "Backend Engineering"
+    if any(token in role_l for token in ("frontend", "ui", "ux", "web developer")):
+        return "Frontend Engineering"
+    if any(token in role_l for token in ("fullstack", "full stack")):
+        return "Fullstack Engineering"
+    if any(token in role_l for token in ("devops", "site reliability", "sre", "cloud architect", "cloud engineer", "infrastructure")):
+        return "DevOps / Platform"
+    if any(token in role_l for token in ("ios", "android", "mobile", "react native", "flutter")):
+        return "Mobile Engineering"
+    if any(token in role_l for token in ("qa", "quality", "test", "automation engineer")):
+        return "QA / Testing"
+    if any(token in role_l for token in ("manager", "product", "designer")):
+        return "Product / Design / Management"
+    return "Other Engineering"
 
 def _extract_known_skills(text: str, limit: int = 10) -> List[str]:
     normalized = _normalize_free_text(text)
@@ -389,12 +541,20 @@ def _infer_location(text: str) -> str:
 
     return "Not specified"
 
+def _infer_work_location_preference(text: str, parsed_location: Optional[str] = None) -> str:
+    source = f"{text or ''} {parsed_location or ''}".strip()
+    inferred = _normalize_work_location_preference(source)
+    if inferred != WORK_MODE_NOT_SPECIFIED:
+        return inferred
+    return WORK_MODE_NOT_SPECIFIED
+
 def _build_fallback_jd_response(jd_text: str, error_hint: str) -> JobDescriptionResponse:
     extracted_skills = _extract_known_skills(jd_text, limit=10)
     must_have = extracted_skills[:5]
     good_to_have = extracted_skills[5:10]
     role = _infer_role_from_text(jd_text)
     seniority = _infer_seniority(jd_text, role)
+    inferred_location = _infer_location(jd_text)
 
     compact_error_hint = re.sub(r'\s+', ' ', (error_hint or "")).strip()[:220]
     fallback_warning = (
@@ -410,7 +570,8 @@ def _build_fallback_jd_response(jd_text: str, error_hint: str) -> JobDescription
         experience_required=_infer_experience_required(jd_text, seniority),
         must_have_skills=must_have,
         good_to_have_skills=good_to_have,
-        location=_infer_location(jd_text),
+        location=inferred_location,
+        work_location_preference=_infer_work_location_preference(jd_text, inferred_location),
         seniority=seniority,
         summary=summary_sentence or "Heuristic parse generated from the provided JD text.",
         parse_success=False,
@@ -470,31 +631,41 @@ def _role_overlap_ratio(jd_role: str, candidate_role: str) -> float:
 
     return len(jd_tokens.intersection(candidate_tokens)) / len(jd_tokens)
 
-def _location_alignment_ratio(jd_location: str, candidate_city: str, remote_preference: str) -> float:
-    jd_loc = _normalize_free_text(jd_location)
-    city = _normalize_free_text(candidate_city)
-    remote_pref = _normalize_free_text(remote_preference)
+def _location_alignment_ratio(jd_location: str, candidate_city: str) -> float:
+    jd_geo_tokens = set(_extract_geographic_tokens(jd_location))
+    city_tokens = set(_extract_geographic_tokens(candidate_city))
 
-    if not jd_loc or _is_unspecified(jd_location):
+    if not jd_geo_tokens or not city_tokens:
         return 0.0
 
-    if "remote" in jd_loc:
-        if "remote" in remote_pref or "any" in remote_pref:
-            return 1.0
-        if "hybrid" in remote_pref:
-            return 0.6
-        return 0.0
-
-    if city and (city in jd_loc or jd_loc in city):
+    if jd_geo_tokens.issubset(city_tokens):
         return 1.0
 
-    jd_tokens = set(jd_loc.split())
-    city_tokens = set(city.split())
-    if jd_tokens and city_tokens and len(jd_tokens.intersection(city_tokens)) >= 1:
+    overlap = jd_geo_tokens.intersection(city_tokens)
+    if len(overlap) >= 2:
+        return 0.85
+    if len(overlap) == 1:
         return 0.6
 
-    if "hybrid" in remote_pref or "any" in remote_pref:
-        return 0.3
+    return 0.0
+
+def _work_mode_alignment_ratio(jd_pref: str, candidate_pref: str) -> float:
+    jd_work_mode = _normalize_work_location_preference(jd_pref)
+    candidate_work_mode = _normalize_work_location_preference(candidate_pref)
+
+    if jd_work_mode == WORK_MODE_NOT_SPECIFIED:
+        return 0.0
+    if candidate_work_mode == WORK_MODE_NOT_SPECIFIED:
+        return 0.4
+
+    if jd_work_mode == WORK_MODE_FLEXIBLE or candidate_work_mode == WORK_MODE_FLEXIBLE:
+        return 1.0
+    if jd_work_mode == candidate_work_mode:
+        return 1.0
+    if jd_work_mode == WORK_MODE_HYBRID and candidate_work_mode in {WORK_MODE_REMOTE_ONLY, WORK_MODE_ONSITE_ONLY}:
+        return 0.6
+    if jd_work_mode in {WORK_MODE_REMOTE_ONLY, WORK_MODE_ONSITE_ONLY} and candidate_work_mode == WORK_MODE_HYBRID:
+        return 0.4
 
     return 0.0
 
@@ -513,6 +684,7 @@ async def parse_jd(request: JobDescriptionRequest):
         - "must_have_skills": (list of strings) Up to 10 absolute critical skills required. Keep them concise (e.g., "React", "Next.js").
         - "good_to_have_skills": (list of strings) Up to 10 preferred or bonus skills. Keep them concise.
         - "location": (string) Location, remote status, or "Not specified".
+        - "work_location_preference": (string) One of: "Remote only", "On-site only", "Hybrid", "Flexible", or "Not specified".
         - "seniority": (string) Seniority level (e.g., "Junior", "Mid-Level", "Senior", "Lead", "Not specified").
         - "summary": (string) A concise 2-3 sentence summary of the role and its primary objective.
         
@@ -524,6 +696,11 @@ async def parse_jd(request: JobDescriptionRequest):
 
         text = await call_groq_then_gemini(prompt)
         parsed_data = json.loads(_strip_code_fences(text))
+        parsed_location = parsed_data.get("location", "Not specified")
+        parsed_work_mode = _normalize_work_location_preference(
+            parsed_data.get("work_location_preference")
+            or _infer_work_location_preference(request.job_description, parsed_location)
+        )
         
         # Ensure all fields are present
         return JobDescriptionResponse(
@@ -531,7 +708,8 @@ async def parse_jd(request: JobDescriptionRequest):
             experience_required=parsed_data.get("experience_required", "Not specified"),
             must_have_skills=parsed_data.get("must_have_skills", []),
             good_to_have_skills=parsed_data.get("good_to_have_skills", []),
-            location=parsed_data.get("location", "Not specified"),
+            location=parsed_location,
+            work_location_preference=parsed_work_mode,
             seniority=parsed_data.get("seniority", "Not specified"),
             summary=parsed_data.get("summary", "Summary not available."),
             parse_success=True,
@@ -570,6 +748,7 @@ async def upload_jd(file: UploadFile = File(...)):
         - "must_have_skills": (list of strings) Up to 10 absolute critical skills required. Keep them concise (e.g., "React", "Next.js").
         - "good_to_have_skills": (list of strings) Up to 10 preferred or bonus skills. Keep them concise.
         - "location": (string) Location, remote status, or "Not specified".
+        - "work_location_preference": (string) One of: "Remote only", "On-site only", "Hybrid", "Flexible", or "Not specified".
         - "seniority": (string) Seniority level (e.g., "Junior", "Mid-Level", "Senior", "Lead", "Not specified").
         - "summary": (string) A concise 2-3 sentence summary of the role and its primary objective.
         
@@ -581,13 +760,19 @@ async def upload_jd(file: UploadFile = File(...)):
 
         text = await call_groq_then_gemini(prompt)
         parsed_data = json.loads(_strip_code_fences(text))
+        parsed_location = parsed_data.get("location", "Not specified")
+        parsed_work_mode = _normalize_work_location_preference(
+            parsed_data.get("work_location_preference")
+            or _infer_work_location_preference(extracted_text, parsed_location)
+        )
         
         return JobDescriptionResponse(
             role=parsed_data.get("role", "Not specified"),
             experience_required=parsed_data.get("experience_required", "Not specified"),
             must_have_skills=parsed_data.get("must_have_skills", []),
             good_to_have_skills=parsed_data.get("good_to_have_skills", []),
-            location=parsed_data.get("location", "Not specified"),
+            location=parsed_location,
+            work_location_preference=parsed_work_mode,
             seniority=parsed_data.get("seniority", "Not specified"),
             summary=parsed_data.get("summary", "Summary not available."),
             parse_success=True,
@@ -610,6 +795,7 @@ class Candidate(BaseModel):
     years_experience: int
     city: str
     remote_preference: str
+    work_location_preference: str = WORK_MODE_NOT_SPECIFIED
     expected_salary: str
     education: str
     last_company: str
@@ -636,14 +822,56 @@ class CandidateStatsResponse(BaseModel):
     remote_friendly_candidates: int
     average_years_experience: float
     top_roles: List[CountByLabel]
+    role_counts: List[CountByLabel]
+    role_family_counts: List[CountByLabel]
     top_cities: List[CountByLabel]
 
 @app.get("/api/candidates", response_model=CandidatesResponse)
-async def get_candidates():
+async def get_candidates(search: Optional[str] = None, work_mode: Optional[str] = None, location: Optional[str] = None):
     try:
         candidates_data, source = await _load_candidates()
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No candidates found in database or {MOCK_CANDIDATES_PATH}")
+
+    if search:
+        tokens = [token for token in _normalize_free_text(search).split() if token]
+        if tokens:
+            candidates_data = [
+                candidate
+                for candidate in candidates_data
+                if all(
+                    token in _normalize_free_text(
+                        " ".join(
+                            [
+                                str(candidate.get("name", "")),
+                                str(candidate.get("role", "")),
+                                str(candidate.get("city", "")),
+                                str(candidate.get("remote_preference", "")),
+                                " ".join(str(skill) for skill in candidate.get("skills", []) if skill),
+                            ]
+                        )
+                    )
+                    for token in tokens
+                )
+            ]
+
+    if work_mode:
+        normalized_mode = _normalize_work_location_preference(work_mode)
+        if normalized_mode != WORK_MODE_NOT_SPECIFIED:
+            candidates_data = [
+                candidate
+                for candidate in candidates_data
+                if _normalize_work_location_preference(candidate.get("work_location_preference")) == normalized_mode
+            ]
+
+    if location:
+        location_tokens = set(_extract_geographic_tokens(location))
+        if location_tokens:
+            candidates_data = [
+                candidate
+                for candidate in candidates_data
+                if location_tokens.intersection(set(_extract_geographic_tokens(str(candidate.get("city", "")))))
+            ]
 
     return CandidatesResponse(
         source=source,
@@ -667,6 +895,8 @@ async def get_candidate_stats():
             remote_friendly_candidates=0,
             average_years_experience=0.0,
             top_roles=[],
+            role_counts=[],
+            role_family_counts=[],
             top_cities=[],
         )
 
@@ -674,10 +904,11 @@ async def get_candidate_stats():
     remote_friendly_candidates = sum(
         1
         for candidate in candidates_data
-        if any(
-            marker in str(candidate.get("remote_preference", "")).lower()
-            for marker in ("remote", "hybrid", "any")
-        )
+        if _normalize_work_location_preference(candidate.get("work_location_preference")) in {
+            WORK_MODE_REMOTE_ONLY,
+            WORK_MODE_HYBRID,
+            WORK_MODE_FLEXIBLE,
+        }
     )
 
     total_experience = sum(int(candidate.get("years_experience", 0) or 0) for candidate in candidates_data)
@@ -691,9 +922,15 @@ async def get_candidate_stats():
         str(candidate.get("city", "Unknown City")).strip() or "Unknown City"
         for candidate in candidates_data
     )
+    role_family_counter = Counter(
+        _role_family_label(str(candidate.get("role", "Unknown Role")).strip() or "Unknown Role")
+        for candidate in candidates_data
+    )
 
+    role_counts = [CountByLabel(label=label, count=count) for label, count in role_counter.most_common()]
     top_roles = [CountByLabel(label=label, count=count) for label, count in role_counter.most_common(5)]
     top_cities = [CountByLabel(label=label, count=count) for label, count in city_counter.most_common(5)]
+    role_family_counts = [CountByLabel(label=label, count=count) for label, count in role_family_counter.most_common()]
 
     return CandidateStatsResponse(
         source=source,
@@ -702,6 +939,8 @@ async def get_candidate_stats():
         remote_friendly_candidates=remote_friendly_candidates,
         average_years_experience=average_years_experience,
         top_roles=top_roles,
+        role_counts=role_counts,
+        role_family_counts=role_family_counts,
         top_cities=top_cities,
     )
 
@@ -724,8 +963,20 @@ async def match_candidates(request: MatchRequest):
     ]
     jd_has_role = not _is_unspecified(jd.role)
     jd_has_location = not _is_unspecified(jd.location)
+    jd_has_geo_location = _has_geographic_location_hint(jd.location)
+    jd_work_location_pref = _normalize_work_location_preference(jd.work_location_preference)
+    if jd_work_location_pref == WORK_MODE_NOT_SPECIFIED:
+        jd_work_location_pref = _normalize_work_location_preference(jd.location)
+    jd_has_work_pref = jd_work_location_pref != WORK_MODE_NOT_SPECIFIED
 
-    if not (jd_must_skills or jd_good_skills or jd_required_experience is not None or jd_has_role or jd_has_location):
+    if not (
+        jd_must_skills
+        or jd_good_skills
+        or jd_required_experience is not None
+        or jd_has_role
+        or jd_has_location
+        or jd_has_work_pref
+    ):
         raise HTTPException(
             status_code=400,
             detail="Insufficient JD signals for matching. Please refine the JD input and retry.",
@@ -734,13 +985,14 @@ async def match_candidates(request: MatchRequest):
     # Hardened weights: missing JD signals do not reduce the denominator,
     # effectively capping the maximum possible match score for sparse JDs.
     weights = {
-        "must": 40.0,
+        "must": 30.0,
         "good": 20.0,
-        "experience": 20.0,
-        "location": 10.0,
+        "experience": 15.0,
+        "location": 15.0,
         "role": 10.0,
+        "work_mode": 10.0,
     }
-    max_points = 100.0
+    max_points = sum(weights.values())
     
     scored_candidates = []
     
@@ -783,13 +1035,24 @@ async def match_candidates(request: MatchRequest):
                 score_points += weights["experience"] * 0.5
                 reasons.append("Slightly below experience requirement.")
 
-        if jd_has_location:
-            location_ratio = _location_alignment_ratio(jd.location, c.city, c.remote_preference)
+        location_ratio = 0.0
+        if jd_has_geo_location:
+            location_ratio = _location_alignment_ratio(jd.location, c.city)
             score_points += weights["location"] * location_ratio
             if location_ratio >= 0.8:
-                reasons.append("Location preference aligns well.")
-            elif location_ratio >= 0.3:
-                reasons.append("Location preference partially aligns.")
+                reasons.append("Location aligns strongly with the JD geography.")
+            elif location_ratio >= 0.5:
+                reasons.append("Location partially aligns with the JD geography.")
+
+        work_mode_ratio = 0.0
+        candidate_work_pref = _normalize_work_location_preference(c.work_location_preference or c.remote_preference)
+        if jd_has_work_pref:
+            work_mode_ratio = _work_mode_alignment_ratio(jd_work_location_pref, candidate_work_pref)
+            score_points += weights["work_mode"] * work_mode_ratio
+            if work_mode_ratio >= 0.8:
+                reasons.append("Work-location preference aligns well.")
+            elif work_mode_ratio >= 0.4:
+                reasons.append("Work-location preference is a partial match.")
 
         if jd_has_role:
             role_ratio = _role_overlap_ratio(jd.role, c.role)
@@ -800,7 +1063,22 @@ async def match_candidates(request: MatchRequest):
                 score_points += weights["role"] * 0.6
                 reasons.append("Partial role alignment.")
 
-        normalized_score = int(round((score_points / max_points) * 100))
+        penalty_multiplier = 1.0
+        if jd_has_geo_location:
+            if location_ratio == 0:
+                penalty_multiplier *= 0.55
+                reasons.append("Location does not match the requested geography.")
+            elif location_ratio < 0.6:
+                penalty_multiplier *= 0.85
+
+        if jd_has_work_pref:
+            if work_mode_ratio == 0:
+                penalty_multiplier *= 0.7
+                reasons.append("Work-location preference does not align.")
+            elif work_mode_ratio < 0.6:
+                penalty_multiplier *= 0.9
+
+        normalized_score = int(round((score_points / max_points) * 100 * penalty_multiplier))
         c.match_score = _clamp_score(normalized_score, default=0)
         c.match_reason = " ".join(reasons).strip() or "Limited alignment based on currently extracted JD signals."
         scored_candidates.append(c)
@@ -823,6 +1101,7 @@ Job Description:
 - Good-to-have: {', '.join(jd.good_to_have_skills)}
 - Experience: {jd.experience_required}
 - Location: {jd.location}
+- Work mode preference: {jd_work_location_pref}
 
 Candidates:
 {chr(10).join(candidates_summary)}
@@ -867,9 +1146,11 @@ Candidate Profile:
 - Open to Work: {cand.open_to_work}
 - Expected Salary: {cand.expected_salary}
 - Remote Preference: {cand.remote_preference}
+- Work Location Preference: {cand.work_location_preference}
 - Match Score: {cand.match_score}/100
 
 Job: {jd.role} in {jd.location}
+JD Work Location Preference: {jd.work_location_preference}
 
 Write a 3-message chat and assign an interest_score (0-100).
 Return ONLY valid JSON:
@@ -930,8 +1211,14 @@ Return ONLY valid JSON:
     # Graceful fallback: synthetic response
     print(f"All providers failed for {cand.name}, using synthetic fallback")
     interest = 70 if cand.open_to_work else 35
-    if "remote" in cand.remote_preference.lower() and "remote" not in jd.location.lower() and jd.location.lower() != "not specified":
+    jd_work_mode = _normalize_work_location_preference(jd.work_location_preference or jd.location)
+    cand_work_mode = _normalize_work_location_preference(cand.work_location_preference or cand.remote_preference)
+    if jd_work_mode == WORK_MODE_ONSITE_ONLY and cand_work_mode == WORK_MODE_REMOTE_ONLY:
         interest = max(interest - 30, 10)
+    elif jd_work_mode == WORK_MODE_REMOTE_ONLY and cand_work_mode == WORK_MODE_ONSITE_ONLY:
+        interest = max(interest - 25, 10)
+    elif jd_work_mode == WORK_MODE_HYBRID and cand_work_mode in {WORK_MODE_REMOTE_ONLY, WORK_MODE_ONSITE_ONLY}:
+        interest = max(interest - 12, 10)
 
     interest = _clamp_score(interest, default=50)
     match_score = _clamp_score(cand.match_score, default=0)

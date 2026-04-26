@@ -7,6 +7,7 @@ export interface JDData {
   must_have_skills: string[];
   good_to_have_skills: string[];
   location: string;
+  work_location_preference?: string;
   seniority: string;
   summary: string;
   parse_success?: boolean;
@@ -48,6 +49,7 @@ export function JDResults({ data }: JDResultsProps) {
         <InfoCard icon={<Briefcase className="w-5 h-5" />} label="Role" value={data.role} />
         <InfoCard icon={<Clock className="w-5 h-5" />} label="Experience" value={data.experience_required} />
         <InfoCard icon={<MapPin className="w-5 h-5" />} label="Location" value={data.location} />
+        <InfoCard icon={<MapPin className="w-5 h-5" />} label="Work Mode" value={data.work_location_preference || "Not specified"} />
         <InfoCard icon={<Star className="w-5 h-5" />} label="Seniority" value={data.seniority} />
       </div>
 

@@ -10,11 +10,19 @@ interface JDInputCardProps {
   isLoading: boolean;
 }
 
+const JD_SAMPLES = [
+  "Looking for a Senior Frontend Engineer with 4+ years of experience in React, Next.js, and TypeScript. Must have a strong eye for UI/UX and be comfortable working in a fast-paced environment.",
+  "We are hiring a Backend Engineer (Node.js) with 3-6 years of experience building scalable APIs, working with PostgreSQL, and deploying services on AWS. Experience with microservices and observability is preferred.",
+  "Seeking a Data Analyst with 2+ years of experience in SQL, Python, and dashboarding tools like Looker or Tableau. The role focuses on product metrics, cohort analysis, and executive reporting.",
+  "Hiring a Product Designer with 3+ years of SaaS experience. Must be strong in end-to-end design, prototyping in Figma, and collaborating closely with PMs and engineers to ship polished user experiences.",
+];
+
 export function JDInputCard({ onAnalyzeText, onAnalyzeFile, isLoading }: JDInputCardProps) {
   const [jdText, setJdText] = useState("");
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [sampleIndex, setSampleIndex] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAnalyzeClick = async () => {
@@ -41,7 +49,8 @@ export function JDInputCard({ onAnalyzeText, onAnalyzeFile, isLoading }: JDInput
   };
 
   const handleSample = () => {
-    setJdText("Looking for a Senior Frontend Engineer with 4+ years of experience in React, Next.js, and TypeScript. Must have a strong eye for UI/UX and be comfortable working in a fast-paced environment.");
+    setJdText(JD_SAMPLES[sampleIndex]);
+    setSampleIndex((prev) => (prev + 1) % JD_SAMPLES.length);
     setSelectedFile(null);
     setError("");
   };

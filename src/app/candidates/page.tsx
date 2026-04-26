@@ -13,6 +13,7 @@ interface CandidateRecord {
   years_experience: number;
   city: string;
   remote_preference: string;
+  work_location_preference?: string;
   open_to_work: boolean;
 }
 
@@ -22,12 +23,32 @@ interface CandidatesResponse {
   candidates: CandidateRecord[];
 }
 
+const normalizeSearchText = (value: string) =>
+  (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9+\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const normalizeWorkMode = (value: string) => {
+  const text = normalizeSearchText(value);
+  if (!text || text === "not specified") return "not-specified";
+  if (text.includes("hybrid")) return "hybrid";
+  if (text.includes("remote")) return "remote";
+  if (text.includes("on site") || text.includes("onsite") || text.includes("office") || text.includes("offline")) return "onsite";
+  if (text.includes("any") || text.includes("flexible")) return "flexible";
+  return "not-specified";
+};
+
 export default function CandidatesPage() {
   const [data, setData] = useState<CandidatesResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [onlyOpenToWork, setOnlyOpenToWork] = useState(false);
+  const [workModeFilter, setWorkModeFilter] = useState("all");
 
   const fetchCandidates = async () => {
     const response = await fetch("/api/candidates", { cache: "no-store" });
@@ -82,7 +103,10 @@ export default function CandidatesPage() {
 
   const filteredCandidates = useMemo(() => {
     const candidates = data?.candidates ?? [];
-    const normalizedQuery = query.trim().toLowerCase();
+    const queryTokens = normalizeSearchText(query)
+      .split(" ")
+      .map((token) => token.trim())
+      .filter(Boolean);
 
     return candidates.filter((candidate) => {
       const passesOpenToWork = !onlyOpenToWork || candidate.open_to_work;
@@ -90,23 +114,29 @@ export default function CandidatesPage() {
         return false;
       }
 
-      if (!normalizedQuery) {
+      const candidateMode = normalizeWorkMode(candidate.work_location_preference || candidate.remote_preference || "");
+      if (workModeFilter !== "all" && candidateMode !== workModeFilter) {
+        return false;
+      }
+
+      if (queryTokens.length === 0) {
         return true;
       }
 
-      const haystack = [
-        candidate.name,
-        candidate.role,
-        candidate.city,
-        candidate.remote_preference,
-        ...(candidate.skills ?? []),
-      ]
-        .join(" ")
-        .toLowerCase();
+      const haystack = normalizeSearchText(
+        [
+          candidate.name,
+          candidate.role,
+          candidate.city,
+          candidate.remote_preference,
+          candidate.work_location_preference || "",
+          ...(candidate.skills ?? []),
+        ].join(" ")
+      );
 
-      return haystack.includes(normalizedQuery);
+      return queryTokens.every((token) => haystack.includes(token));
     });
-  }, [data, onlyOpenToWork, query]);
+  }, [data, onlyOpenToWork, query, workModeFilter]);
 
   const openToWorkCount = useMemo(
     () => (data?.candidates ?? []).filter((candidate) => candidate.open_to_work).length,
@@ -116,8 +146,8 @@ export default function CandidatesPage() {
   const remoteFriendlyCount = useMemo(
     () =>
       (data?.candidates ?? []).filter((candidate) => {
-        const pref = candidate.remote_preference?.toLowerCase() ?? "";
-        return pref.includes("remote") || pref.includes("hybrid") || pref.includes("any");
+        const mode = normalizeWorkMode(candidate.work_location_preference || candidate.remote_preference || "");
+        return mode === "remote" || mode === "hybrid" || mode === "flexible";
       }).length,
     [data]
   );
@@ -177,20 +207,34 @@ export default function CandidatesPage() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by name, role, location, skill"
+              placeholder="Search by keywords (name role location skill)"
               className="w-full rounded-xl border border-white/15 bg-white/5 py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-white/40 outline-none transition-colors focus:border-[#5AE14C]/60"
             />
           </label>
 
-          <label className="inline-flex items-center gap-2 text-sm font-medium text-white/80">
-            <input
-              type="checkbox"
-              checked={onlyOpenToWork}
-              onChange={(event) => setOnlyOpenToWork(event.target.checked)}
-              className="h-4 w-4 rounded border-white/30 bg-white/5 text-[#5AE14C]"
-            />
-            Only open-to-work candidates
-          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={workModeFilter}
+              onChange={(event) => setWorkModeFilter(event.target.value)}
+              className="rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white outline-none transition-colors focus:border-[#5AE14C]/60"
+            >
+              <option value="all" className="bg-[#0a1017]">All Work Modes</option>
+              <option value="remote" className="bg-[#0a1017]">Remote Only</option>
+              <option value="onsite" className="bg-[#0a1017]">On-site Only</option>
+              <option value="hybrid" className="bg-[#0a1017]">Hybrid</option>
+              <option value="flexible" className="bg-[#0a1017]">Flexible</option>
+            </select>
+
+            <label className="inline-flex items-center gap-2 text-sm font-medium text-white/80">
+              <input
+                type="checkbox"
+                checked={onlyOpenToWork}
+                onChange={(event) => setOnlyOpenToWork(event.target.checked)}
+                className="h-4 w-4 rounded border-white/30 bg-white/5 text-[#5AE14C]"
+              />
+              Only open-to-work candidates
+            </label>
+          </div>
         </div>
 
         {isLoading && (
@@ -234,7 +278,9 @@ export default function CandidatesPage() {
 
                 <div className="mb-3 flex flex-wrap gap-2 text-xs text-white/70">
                   <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">{candidate.city}</span>
-                  <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">{candidate.remote_preference}</span>
+                  <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">
+                    {candidate.work_location_preference || candidate.remote_preference}
+                  </span>
                   <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">
                     {candidate.years_experience} YOE
                   </span>
