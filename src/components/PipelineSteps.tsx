@@ -23,6 +23,7 @@ function getStepStatus(stepId: string, currentStep: PipelineStep): "complete" | 
   const stepIndex = stepOrder.indexOf(stepId as PipelineStep);
 
   if (currentStep === "idle") return "pending";
+  if (currentStep === "ranked") return "complete";
   if (stepIndex < currentIndex) return "complete";
   if (stepIndex === currentIndex) return "active";
   return "pending";
