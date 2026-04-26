@@ -202,7 +202,7 @@ export function Hero() {
   // Ranked shortlist view
   if (showRankedShortlist && engagedCandidates.size > 0 && jdData) {
     return (
-      <div className="relative z-10 w-full min-h-screen pt-[120px] pb-24 px-6 flex flex-col items-center">
+      <div id="workspace" className="relative z-10 w-full min-h-screen pt-[120px] pb-24 px-6 flex flex-col items-center scroll-mt-28">
         <PipelineSteps currentStep="ranked" />
 
         {/* Dashboard Header */}
@@ -235,7 +235,7 @@ export function Hero() {
   // Dashboard view (after JD parsed)
   if (jdData) {
     return (
-      <div className="relative z-10 w-full min-h-screen pt-[120px] pb-24 px-6 flex flex-col items-center">
+      <div id="workspace" className="relative z-10 w-full min-h-screen pt-[120px] pb-24 px-6 flex flex-col items-center scroll-mt-28">
         <PipelineSteps currentStep={pipelineStep} />
 
         {/* Dashboard Header */}
@@ -354,7 +354,7 @@ export function Hero() {
 
   // Landing page
   return (
-    <div className="relative z-10 w-full min-h-screen pt-[160px] pb-24 px-6 flex flex-col items-center justify-center -translate-y-8">
+    <div id="platform" className="relative z-10 w-full min-h-screen pt-[160px] pb-24 px-6 flex flex-col items-center justify-center -translate-y-8 scroll-mt-28">
       
       {/* Badges */}
       <div className="flex items-center gap-3 mb-8 bg-white/5 backdrop-blur-md border border-white/10 rounded-full p-1 pr-4 shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
@@ -379,10 +379,12 @@ export function Hero() {
       </p>
 
       {/* Interactive Phase 0 Card */}
-      <JDInputCard onAnalyzeText={handleAnalyzeText} onAnalyzeFile={handleAnalyzeFile} isLoading={isLoading} />
+      <div id="workspace" className="w-full flex justify-center scroll-mt-28">
+        <JDInputCard onAnalyzeText={handleAnalyzeText} onAnalyzeFile={handleAnalyzeFile} isLoading={isLoading} />
+      </div>
 
       {/* Feature Cards */}
-      <div className="mt-16 w-full flex flex-col items-center">
+      <div id="features" className="mt-16 w-full flex flex-col items-center scroll-mt-28">
         <div className="max-w-[1000px] w-full">
           <FeatureCards />
         </div>

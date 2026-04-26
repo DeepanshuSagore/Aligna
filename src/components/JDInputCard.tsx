@@ -114,7 +114,7 @@ export function JDInputCard({ onAnalyzeText, onAnalyzeFile, isLoading }: JDInput
             className={cn(
                 "relative w-full rounded-[16px] overflow-hidden transition-all duration-300 border-2", 
                 isDragging ? "border-[#5AE14C] bg-[#5AE14C]/10 scale-[1.01] shadow-[0_0_30px_rgba(90,225,76,0.2)]" : 
-                error ? "border-red-500 bg-white" : "border-transparent bg-white"
+                error ? "border-red-500 bg-gray-100" : "border-transparent bg-gray-100"
             )}
         >
           {selectedFile ? (
@@ -146,7 +146,7 @@ export function JDInputCard({ onAnalyzeText, onAnalyzeFile, isLoading }: JDInput
                     disabled={isLoading}
                     placeholder="Paste Job Description here, or drag and drop a PDF file..."
                     className={cn(
-                        "w-full h-[180px] md:h-[220px] p-6 text-black placeholder:text-gray-400 bg-transparent resize-none outline-none font-inter text-[16px] leading-[1.6] disabled:opacity-70 disabled:cursor-not-allowed",
+                        "w-full h-[180px] md:h-[220px] p-6 text-black placeholder:text-gray-600 bg-transparent resize-none outline-none font-inter text-[16px] leading-[1.6] disabled:opacity-70 disabled:cursor-not-allowed",
                         isDragging && "opacity-30"
                     )}
                 />

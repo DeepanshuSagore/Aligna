@@ -4,6 +4,7 @@ import re
 import io
 import asyncio
 import time
+from collections import Counter
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -90,6 +91,66 @@ def _is_unspecified(value: Optional[str]) -> bool:
 
 def _normalize_free_text(value: str) -> str:
     return re.sub(r'[^a-z0-9+#.\s]+', ' ', (value or '').lower()).strip()
+
+def _normalize_candidate_doc(doc: dict) -> dict:
+    normalized = dict(doc)
+    raw_id = normalized.pop("_id", None)
+    existing_id = normalized.get("id")
+    normalized["id"] = str(existing_id or raw_id or "")
+
+    # Ensure stable defaults so API responses are always shape-safe for the UI.
+    normalized.setdefault("name", "Unknown Candidate")
+    normalized.setdefault("role", "Unknown Role")
+    normalized.setdefault("city", "Unknown City")
+    normalized.setdefault("remote_preference", "Not specified")
+    normalized.setdefault("expected_salary", "Not specified")
+    normalized.setdefault("education", "Not specified")
+    normalized.setdefault("last_company", "Not specified")
+    normalized.setdefault("open_to_work", False)
+
+    skills = normalized.get("skills", [])
+    if not isinstance(skills, list):
+        skills = []
+    normalized["skills"] = [str(skill) for skill in skills if skill is not None]
+
+    try:
+        normalized["years_experience"] = int(float(normalized.get("years_experience", 0)))
+    except (TypeError, ValueError):
+        normalized["years_experience"] = 0
+
+    normalized["match_score"] = _clamp_score(normalized.get("match_score", 0))
+    normalized["match_reason"] = str(normalized.get("match_reason", "") or "")
+    return normalized
+
+def _load_candidates_from_mock(limit: Optional[int] = None) -> List[dict]:
+    with open(MOCK_CANDIDATES_PATH, "r") as f:
+        data = json.load(f)
+    normalized = [_normalize_candidate_doc(candidate) for candidate in data]
+    if limit is None:
+        return normalized
+    return normalized[:max(0, limit)]
+
+async def _load_candidates(limit: Optional[int] = None) -> tuple[List[dict], str]:
+    global db
+
+    if db is not None:
+        try:
+            cursor = db.candidates.find({})
+            if limit is not None:
+                cursor = cursor.limit(max(0, limit))
+
+            candidates_data: List[dict] = []
+            async for doc in cursor:
+                candidates_data.append(_normalize_candidate_doc(doc))
+
+            if candidates_data:
+                return candidates_data, "mongodb"
+        except Exception as e:
+            print(f"MongoDB read error: {e}")
+            print("Falling back to local mock candidates for this and future requests.")
+            db = None
+
+    return _load_candidates_from_mock(limit=limit), "mock_json"
 
 async def _generate_gemini_text(prompt: str, model_name: str = GEMINI_MODEL) -> str:
     model = genai.GenerativeModel(model_name)
@@ -559,30 +620,97 @@ class Candidate(BaseModel):
 class MatchResponse(BaseModel):
     candidates: List[Candidate]
 
+class CandidatesResponse(BaseModel):
+    source: str
+    count: int
+    candidates: List[Candidate]
+
+class CountByLabel(BaseModel):
+    label: str
+    count: int
+
+class CandidateStatsResponse(BaseModel):
+    source: str
+    total_candidates: int
+    open_to_work_candidates: int
+    remote_friendly_candidates: int
+    average_years_experience: float
+    top_roles: List[CountByLabel]
+    top_cities: List[CountByLabel]
+
+@app.get("/api/candidates", response_model=CandidatesResponse)
+async def get_candidates():
+    try:
+        candidates_data, source = await _load_candidates()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No candidates found in database or {MOCK_CANDIDATES_PATH}")
+
+    return CandidatesResponse(
+        source=source,
+        count=len(candidates_data),
+        candidates=candidates_data,
+    )
+
+@app.get("/api/candidates/stats", response_model=CandidateStatsResponse)
+async def get_candidate_stats():
+    try:
+        candidates_data, source = await _load_candidates()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No candidates found in database or {MOCK_CANDIDATES_PATH}")
+
+    total_candidates = len(candidates_data)
+    if total_candidates == 0:
+        return CandidateStatsResponse(
+            source=source,
+            total_candidates=0,
+            open_to_work_candidates=0,
+            remote_friendly_candidates=0,
+            average_years_experience=0.0,
+            top_roles=[],
+            top_cities=[],
+        )
+
+    open_to_work_candidates = sum(1 for candidate in candidates_data if candidate.get("open_to_work"))
+    remote_friendly_candidates = sum(
+        1
+        for candidate in candidates_data
+        if any(
+            marker in str(candidate.get("remote_preference", "")).lower()
+            for marker in ("remote", "hybrid", "any")
+        )
+    )
+
+    total_experience = sum(int(candidate.get("years_experience", 0) or 0) for candidate in candidates_data)
+    average_years_experience = round(total_experience / total_candidates, 1)
+
+    role_counter = Counter(
+        str(candidate.get("role", "Unknown Role")).strip() or "Unknown Role"
+        for candidate in candidates_data
+    )
+    city_counter = Counter(
+        str(candidate.get("city", "Unknown City")).strip() or "Unknown City"
+        for candidate in candidates_data
+    )
+
+    top_roles = [CountByLabel(label=label, count=count) for label, count in role_counter.most_common(5)]
+    top_cities = [CountByLabel(label=label, count=count) for label, count in city_counter.most_common(5)]
+
+    return CandidateStatsResponse(
+        source=source,
+        total_candidates=total_candidates,
+        open_to_work_candidates=open_to_work_candidates,
+        remote_friendly_candidates=remote_friendly_candidates,
+        average_years_experience=average_years_experience,
+        top_roles=top_roles,
+        top_cities=top_cities,
+    )
+
 @app.post("/api/match-candidates", response_model=MatchResponse)
 async def match_candidates(request: MatchRequest):
-    global db
-    candidates_data = []
-    
-    if db is not None:
-        try:
-            cursor = db.candidates.find({})
-            async for doc in cursor:
-                doc['id'] = str(doc.pop('_id')) if '_id' in doc and 'id' not in doc else doc.get('id', str(doc.get('_id')))
-                candidates_data.append(doc)
-        except Exception as e:
-            print(f"MongoDB read error: {e}")
-            print("Falling back to local mock candidates for this and future requests.")
-            db = None
-            candidates_data = []
-            
-    # Fallback to JSON
-    if not candidates_data:
-        try:
-            with open(MOCK_CANDIDATES_PATH, "r") as f:
-                candidates_data = json.load(f)
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail=f"No candidates found in database or {MOCK_CANDIDATES_PATH}")
+    try:
+        candidates_data, _ = await _load_candidates()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No candidates found in database or {MOCK_CANDIDATES_PATH}")
         
     jd = request.jd_data
     
