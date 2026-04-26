@@ -4,10 +4,11 @@ import time
 import google.generativeai as genai
 from dotenv import load_dotenv
 
+SCRIPT_DIR = os.path.dirname(__file__)
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
+
 # Load environment variables
-load_dotenv("../../.env.local")
-load_dotenv("../.env.local")
-load_dotenv(".env.local")
+load_dotenv(os.path.join(PROJECT_ROOT, ".env.local"))
 
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
@@ -82,7 +83,7 @@ def main():
     final_list = list(unique_candidates.values())
     
     # Save to file
-    output_path = "mock_candidates.json"
+    output_path = os.path.join(PROJECT_ROOT, "mock_candidates.json")
     with open(output_path, "w") as f:
         json.dump(final_list, f, indent=2)
         

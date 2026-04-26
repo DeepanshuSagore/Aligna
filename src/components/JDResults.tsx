@@ -1,4 +1,4 @@
-import { Briefcase, MapPin, Star, Clock, Target, CheckCircle2 } from "lucide-react";
+import { Briefcase, MapPin, Star, Clock, Target, CheckCircle2, AlertTriangle } from "lucide-react";
 import { SkillPills } from "./SkillPills";
 
 export interface JDData {
@@ -9,6 +9,8 @@ export interface JDData {
   location: string;
   seniority: string;
   summary: string;
+  parse_success?: boolean;
+  warning?: string | null;
 }
 
 interface JDResultsProps {
@@ -18,6 +20,28 @@ interface JDResultsProps {
 export function JDResults({ data }: JDResultsProps) {
   return (
     <div className="w-full flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
+
+      {(data.parse_success === false || data.warning) && (
+        <div className="glassmorphism p-5 rounded-[22px] border border-red-500/40 bg-red-500/10 shadow-[0_8px_30px_rgba(239,68,68,0.2)] animate-pulse">
+          <div className="flex items-start gap-4">
+            <div className="p-2 bg-red-500/20 rounded-full">
+              <AlertTriangle className="w-6 h-6 text-red-400" />
+            </div>
+            <div>
+              <p className="text-base font-bold text-red-200 uppercase tracking-tight">JD Parsing Alert</p>
+              <p className="text-sm text-red-100/80 leading-relaxed mt-1 font-medium">
+                {data.warning || "ScoutIQ could not automatically extract all JD fields. Matching quality may be significantly reduced."}
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-[11px] font-bold px-2 py-0.5 bg-red-500/30 text-red-100 rounded-md border border-red-500/30">
+                  ACTION REQUIRED
+                </span>
+                <p className="text-[11px] text-red-200/70">Verify the extracted skills below before engaging candidates.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Top 4 Summary Cards */}
       <div className="grid grid-cols-2 gap-3">

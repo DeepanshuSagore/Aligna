@@ -24,6 +24,8 @@ export function Hero() {
   const [isEngagingAll, setIsEngagingAll] = useState(false);
   const [engageProgress, setEngageProgress] = useState({ current: 0, total: 0 });
   const [showRankedShortlist, setShowRankedShortlist] = useState(false);
+  const totalCandidates = candidates?.length ?? 0;
+  const remainingToEngage = Math.max(totalCandidates - engagedCandidates.size, 0);
 
   const handleAnalyzeText = async (jdText: string) => {
     setIsLoading(true);
@@ -41,7 +43,8 @@ export function Hero() {
       });
 
       if (!res.ok) {
-        throw new Error("Failed to parse JD");
+        const errorPayload = await res.json().catch(() => null);
+        throw new Error(errorPayload?.detail || "Failed to parse JD");
       }
 
       const data: JDData = await res.json();
@@ -51,7 +54,8 @@ export function Hero() {
     } catch (error) {
       console.error(error);
       setPipelineStep("idle");
-      alert("Failed to analyze the Job Description. Make sure the backend is running and you have a valid Gemini API key configured.");
+      const errorMessage = error instanceof Error ? error.message : "Unknown parsing error";
+      alert(`Failed to analyze the Job Description. ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -73,7 +77,8 @@ export function Hero() {
       });
 
       if (!res.ok) {
-        throw new Error("Failed to parse PDF JD");
+        const errorPayload = await res.json().catch(() => null);
+        throw new Error(errorPayload?.detail || "Failed to parse PDF JD");
       }
 
       const data: JDData = await res.json();
@@ -83,7 +88,8 @@ export function Hero() {
     } catch (error) {
       console.error(error);
       setPipelineStep("idle");
-      alert("Failed to analyze the PDF. Make sure the backend is running and you uploaded a valid PDF.");
+      const errorMessage = error instanceof Error ? error.message : "Unknown PDF parsing error";
+      alert(`Failed to analyze the PDF. ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -103,7 +109,8 @@ export function Hero() {
       });
 
       if (!res.ok) {
-        throw new Error("Failed to match candidates");
+        const errorPayload = await res.json().catch(() => null);
+        throw new Error(errorPayload?.detail || "Failed to match candidates");
       }
 
       const data = await res.json();
@@ -111,7 +118,8 @@ export function Hero() {
       setPipelineStep("matching"); // Stay on matching step until engagement begins
     } catch (error) {
       console.error(error);
-      alert("Failed to find matches. Make sure backend is running and mock_candidates.json exists.");
+      const errorMessage = error instanceof Error ? error.message : "Unknown matching error";
+      alert(`Failed to find matches. ${errorMessage}`);
     } finally {
       setIsMatching(false);
     }
@@ -145,16 +153,21 @@ export function Hero() {
 
   const handleEngageAll = async () => {
     if (!candidates || !jdData) return;
+
+    const pendingCandidates = candidates.filter((candidate) => !engagedCandidates.has(candidate.id));
+    if (pendingCandidates.length === 0) {
+      setPipelineStep("ranked");
+      setShowRankedShortlist(true);
+      return;
+    }
+
     setIsEngagingAll(true);
     setPipelineStep("engaging");
-    setEngageProgress({ current: 0, total: candidates.length });
+    setEngageProgress({ current: 0, total: pendingCandidates.length });
 
-    for (let i = 0; i < candidates.length; i++) {
-      const candidate = candidates[i];
-      setEngageProgress({ current: i + 1, total: candidates.length });
-
-      // Skip already engaged
-      if (engagedCandidates.has(candidate.id)) continue;
+    for (let i = 0; i < pendingCandidates.length; i++) {
+      const candidate = pendingCandidates[i];
+      setEngageProgress({ current: i + 1, total: pendingCandidates.length });
 
       try {
         const res = await fetch(`/api/simulate-interest`, {
@@ -232,27 +245,44 @@ export function Hero() {
              Candidate Discovery Dashboard
            </h2>
            <div className="flex items-center gap-3">
+             {/* Primary Action Button */}
              {candidates && candidates.length > 0 && (
-               <button
-                 onClick={handleEngageAll}
-                 disabled={isEngagingAll}
-                 className="flex items-center gap-2 px-5 py-2.5 bg-[#5AE14C] text-black font-semibold rounded-xl hover:bg-[#4DC93F] transition-all shadow-[0_0_20px_rgba(90,225,76,0.3)] hover:shadow-[0_0_30px_rgba(90,225,76,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
-               >
-                 <Users className="w-4 h-4" />
-                 {isEngagingAll 
-                   ? `Engaging ${engageProgress.current}/${engageProgress.total}...` 
-                   : engagedCandidates.size > 0 
-                     ? "View Ranked Shortlist"
-                     : "Engage All & Rank"
-                 }
-               </button>
+               remainingToEngage > 0 ? (
+                 <button
+                   onClick={handleEngageAll}
+                   disabled={isEngagingAll}
+                   className="flex items-center gap-2 px-5 py-2.5 bg-[#5AE14C] text-black font-semibold rounded-xl hover:bg-[#4DC93F] transition-all shadow-[0_0_20px_rgba(90,225,76,0.3)] hover:shadow-[0_0_30px_rgba(90,225,76,0.5)] disabled:opacity-50 disabled:cursor-not-allowed group"
+                 >
+                   {isEngagingAll ? (
+                     <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+                   ) : (
+                     <Users className="w-4 h-4 transition-transform group-hover:scale-110" />
+                   )}
+                   {isEngagingAll 
+                     ? `Engaging ${engageProgress.current}/${engageProgress.total}...` 
+                     : engagedCandidates.size > 0 
+                       ? `Engage Remaining (${remainingToEngage})`
+                       : "Engage All & Rank"
+                   }
+                 </button>
+               ) : (
+                 <button
+                   onClick={() => { setPipelineStep("ranked"); setShowRankedShortlist(true); }}
+                   className="flex items-center gap-2 px-5 py-2.5 bg-[#5AE14C] text-black font-semibold rounded-xl hover:bg-[#4DC93F] transition-all shadow-[0_0_20px_rgba(90,225,76,0.3)] hover:shadow-[0_0_30px_rgba(90,225,76,0.5)]"
+                 >
+                   <Sparkles className="w-4 h-4" />
+                   View Ranked Shortlist
+                 </button>
+               )
              )}
-             {engagedCandidates.size > 0 && !isEngagingAll && (
+
+             {/* Secondary Shortlist Link (Only if some are engaged but not all) */}
+             {engagedCandidates.size > 0 && remainingToEngage > 0 && !isEngagingAll && (
                <button
                  onClick={() => { setPipelineStep("ranked"); setShowRankedShortlist(true); }}
                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-medium border border-white/10"
                >
-                 View Shortlist ({engagedCandidates.size})
+                 Partial Shortlist ({engagedCandidates.size})
                </button>
              )}
              <button 

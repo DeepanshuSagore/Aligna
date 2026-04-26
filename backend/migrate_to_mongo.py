@@ -3,10 +3,11 @@ import json
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
+SCRIPT_DIR = os.path.dirname(__file__)
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
+
 # Load environment variables
-load_dotenv("../../.env.local")
-load_dotenv("../.env.local")
-load_dotenv(".env.local")
+load_dotenv(os.path.join(PROJECT_ROOT, ".env.local"))
 
 uri = os.getenv("MONGODB_URI")
 if not uri:
@@ -21,7 +22,7 @@ collection = db.candidates
 def migrate():
     # Load candidates from JSON
     try:
-        with open("mock_candidates.json", "r") as f:
+        with open(os.path.join(PROJECT_ROOT, "mock_candidates.json"), "r") as f:
             candidates = json.load(f)
     except FileNotFoundError:
         print("ERROR: mock_candidates.json not found.")

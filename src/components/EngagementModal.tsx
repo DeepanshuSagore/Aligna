@@ -33,43 +33,58 @@ export function EngagementModal({ isOpen, onClose, candidate, jdData, onEngageme
   const [result, setResult] = useState<SimulationResult | null>(null);
 
   useEffect(() => {
-    if (isOpen && candidate && jdData) {
-      // Reset state on open
+    if (!isOpen || !candidate || !jdData) {
+      return;
+    }
+
+    let isCancelled = false;
+    const simulate = async () => {
       setResult(null);
       setIsLoading(true);
 
-      const simulate = async () => {
-        try {
-          const res = await fetch(`/api/simulate-interest`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ candidate, jd_data: jdData }),
+      try {
+        const res = await fetch(`/api/simulate-interest`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ candidate, jd_data: jdData }),
+        });
+
+        if (!res.ok) throw new Error("Failed to simulate");
+        const data: SimulationResult = await res.json();
+        if (isCancelled) return;
+
+        setResult(data);
+
+        // Pass result back to parent
+        if (onEngagementComplete) {
+          onEngagementComplete(candidate.id, {
+            interest_score: data.interest_score,
+            final_score: data.final_score,
+            chat_logs: data.chat_logs,
           });
-
-          if (!res.ok) throw new Error("Failed to simulate");
-          const data: SimulationResult = await res.json();
-          setResult(data);
-
-          // Pass result back to parent
-          if (onEngagementComplete && candidate) {
-            onEngagementComplete(candidate.id, {
-              interest_score: data.interest_score,
-              final_score: data.final_score,
-              chat_logs: data.chat_logs,
-            });
-          }
-        } catch (err) {
+        }
+      } catch (err) {
+        if (!isCancelled) {
           console.error(err);
-        } finally {
+        }
+      } finally {
+        if (!isCancelled) {
           setIsLoading(false);
         }
-      };
+      }
+    };
 
-      simulate();
-    }
-  }, [isOpen, candidate, jdData]);
+    void simulate();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, candidate, jdData, onEngagementComplete]);
 
   if (!isOpen || !candidate) return null;
+
+  const safeInterestScore = result ? Math.max(0, Math.min(result.interest_score, 100)) : 0;
+  const safeFinalScore = result ? Math.max(0, Math.min(result.final_score, 100)) : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
@@ -111,13 +126,13 @@ export function EngagementModal({ isOpen, onClose, candidate, jdData, onEngageme
                   <span className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-1 flex items-center gap-1">
                     <Target className="w-3 h-3" /> Interest Score
                   </span>
-                  <span className={`text-3xl font-bold mb-2 ${result.interest_score >= 70 ? 'text-[#5AE14C]' : result.interest_score >= 40 ? 'text-[#FACC15]' : 'text-[#F87171]'}`}>
-                    {result.interest_score}/100
+                  <span className={`text-3xl font-bold mb-2 ${safeInterestScore >= 70 ? 'text-[#5AE14C]' : safeInterestScore >= 40 ? 'text-[#FACC15]' : 'text-[#F87171]'}`}>
+                    {safeInterestScore}/100
                   </span>
                   <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
                     <div 
-                      className={`h-full transition-all duration-1000 ease-out ${result.interest_score >= 70 ? 'bg-[#5AE14C]' : result.interest_score >= 40 ? 'bg-[#FACC15]' : 'bg-[#F87171]'}`}
-                      style={{ width: `${result.interest_score}%` }}
+                      className={`h-full transition-all duration-1000 ease-out ${safeInterestScore >= 70 ? 'bg-[#5AE14C]' : safeInterestScore >= 40 ? 'bg-[#FACC15]' : 'bg-[#F87171]'}`}
+                      style={{ width: `${safeInterestScore}%` }}
                     ></div>
                   </div>
                 </div>
@@ -128,12 +143,12 @@ export function EngagementModal({ isOpen, onClose, candidate, jdData, onEngageme
                     <Award className="w-3 h-3" /> Final Score
                   </span>
                   <span className="text-3xl font-bold text-[#5AE14C] drop-shadow-[0_0_10px_rgba(90,225,76,0.4)] mb-2">
-                    {result.final_score}/100
+                    {safeFinalScore}/100
                   </span>
                   <div className="w-full h-1.5 bg-[#5AE14C]/20 rounded-full overflow-hidden">
                     <div 
                       className="h-full bg-[#5AE14C] transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(90,225,76,0.8)]"
-                      style={{ width: `${result.final_score}%` }}
+                      style={{ width: `${safeFinalScore}%` }}
                     ></div>
                   </div>
                 </div>

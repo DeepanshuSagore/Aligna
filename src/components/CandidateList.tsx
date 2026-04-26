@@ -37,14 +37,14 @@ export function CandidateList({ candidates, onEngage, engagedIds }: CandidateLis
     const BOM = "\uFEFF";
     csvContent += BOM;
 
-    let headers = ["Name", "Role", "Match Score", "Years Experience", "City", "Remote Preference", "Expected Salary", "Last Company", "Top Skills"];
+    const headers = ["Name", "Role", "Match Score", "Years Experience", "City", "Remote Preference", "Expected Salary", "Last Company", "Top Skills"];
     if (includeAIReason) {
       headers.push("AI Match Reason");
     }
     csvContent += headers.join(",") + "\n";
 
     candidates.forEach((c) => {
-      let row = [
+      const row = [
         `"${c.name}"`,
         `"${c.role}"`,
         c.match_score,

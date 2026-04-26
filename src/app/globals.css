@@ -3,6 +3,12 @@
 :root {
   --background: #000000;
   --foreground: #ffffff;
+  --aurora-base-top: #040912;
+  --aurora-base-mid: #070d16;
+  --aurora-base-bottom: #03050b;
+  --aurora-green: rgba(101, 255, 127, 0.58);
+  --aurora-purple: rgba(150, 94, 255, 0.42);
+  --aurora-cyan: rgba(52, 190, 255, 0.34);
 }
 
 @theme inline {
@@ -20,6 +26,66 @@ body {
   font-family: var(--font-inter);
 }
 
+.aurora-bg {
+  background:
+    radial-gradient(110% 90% at 50% -8%, rgba(130, 220, 255, 0.14) 0%, transparent 60%),
+    linear-gradient(180deg, var(--aurora-base-top) 0%, var(--aurora-base-mid) 45%, var(--aurora-base-bottom) 100%);
+}
+
+.aurora-orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(76px);
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
+  transform: translate3d(0, 0, 0);
+}
+
+.aurora-orb-green {
+  width: min(64vw, 860px);
+  height: min(62vw, 820px);
+  left: -14vw;
+  top: -12vh;
+  background: radial-gradient(circle at 50% 50%, var(--aurora-green) 0%, rgba(101, 255, 127, 0) 74%);
+  animation: auroraFloatA 20s ease-in-out infinite alternate;
+}
+
+.aurora-orb-purple {
+  width: min(58vw, 760px);
+  height: min(58vw, 760px);
+  right: -10vw;
+  top: -4vh;
+  background: radial-gradient(circle at 50% 50%, var(--aurora-purple) 0%, rgba(150, 94, 255, 0) 76%);
+  animation: auroraFloatB 24s ease-in-out infinite alternate;
+}
+
+.aurora-orb-cyan {
+  width: min(54vw, 700px);
+  height: min(54vw, 700px);
+  left: 28vw;
+  bottom: -18vh;
+  background: radial-gradient(circle at 50% 50%, var(--aurora-cyan) 0%, rgba(52, 190, 255, 0) 78%);
+  animation: auroraFloatC 18s ease-in-out infinite alternate;
+}
+
+.aurora-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(78% 58% at 50% 42%, rgba(8, 12, 20, 0.02) 24%, rgba(2, 3, 7, 0.44) 100%),
+    linear-gradient(180deg, rgba(3, 4, 9, 0.04) 0%, rgba(2, 3, 7, 0.34) 100%);
+}
+
+.aurora-noise {
+  position: absolute;
+  inset: -100px;
+  opacity: 0.05;
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.3) 0.45px, transparent 0.65px);
+  background-size: 3px 3px;
+  mix-blend-mode: soft-light;
+}
+
 @layer utilities {
   .glassmorphism {
     background: rgba(0, 0, 0, 0.32);
@@ -32,5 +98,32 @@ body {
 @layer utilities {
   @keyframes shimmer {
     100% { transform: translateX(100%); }
+  }
+}
+
+@keyframes auroraFloatA {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.88; }
+  100% { transform: translate3d(8vw, 10vh, 0) scale(1.15); opacity: 1; }
+}
+
+@keyframes auroraFloatB {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.62; }
+  100% { transform: translate3d(-10vw, 7vh, 0) scale(1.12); opacity: 0.86; }
+}
+
+@keyframes auroraFloatC {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.54; }
+  100% { transform: translate3d(-7vw, -8vh, 0) scale(1.1); opacity: 0.76; }
+}
+
+@media (max-width: 768px) {
+  .aurora-orb {
+    filter: blur(62px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-orb {
+    animation: none !important;
   }
 }
