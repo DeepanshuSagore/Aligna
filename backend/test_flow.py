@@ -104,7 +104,18 @@ def test_engagement_chat_normalization():
     assert len(logs) == 5
     assert logs[0].sender == "ALIGNA"
     assert logs[1].sender == candidate.name
+    assert logs[2].sender == "ALIGNA"
+    assert logs[3].sender == candidate.name
+    assert logs[4].sender == "ALIGNA"
     assert len(logs[0].message) <= 220
+
+    mislabeled_chat = [
+        {"sender": candidate.name, "message": "Hi Ava, I have a frontend role that may fit."},
+        {"sender": candidate.name, "message": "Thanks, I can take a quick look."},
+        {"sender": candidate.name, "message": "Great, I will send a short brief."},
+    ]
+    logs = api_index._normalize_chat_logs(mislabeled_chat, candidate, jd, 3)
+    assert [log.sender for log in logs] == ["ALIGNA", candidate.name, "ALIGNA"]
 
     low_score_logs = api_index._build_synthetic_chat_logs(candidate, jd, api_index._engagement_message_count(40))
     high_score_logs = api_index._build_synthetic_chat_logs(candidate, jd, api_index._engagement_message_count(85))
@@ -140,6 +151,17 @@ def test_interest_explanation_normalization():
     assert "Strong interest" in reason
     assert len(factors) == 2
     assert len(factors[0]) <= 160
+
+    reason, factors = api_index._normalize_interest_explanation(
+        "Basic match and remote preference",
+        ["remote preference match", "basic role match"],
+        candidate,
+        jd,
+        interest_score=60,
+        match_score=45,
+    )
+    assert "Basic match" not in reason
+    assert all("basic" not in factor.lower() for factor in factors)
     print("✓ Interest explanation normalization tests passed")
 
 async def test_missing_optional_criteria_are_not_scored():

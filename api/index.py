@@ -1271,12 +1271,8 @@ def _compact_chat_message(message: str, max_chars: int = 220) -> str:
     clipped = compact[:max_chars - 3].rsplit(" ", 1)[0].rstrip(" .,")
     return f"{clipped}..." if clipped else compact[:max_chars].rstrip()
 
-def _normalize_chat_sender(sender: str, candidate_name: str) -> str:
-    normalized = (sender or "").strip()
-    lowered = normalized.lower()
-    if any(token in lowered for token in ("scout", "recruiter", "ai")):
-        return "ALIGNA"
-    return candidate_name
+def _expected_chat_sender(index: int, candidate_name: str) -> str:
+    return "ALIGNA" if index % 2 == 0 else candidate_name
 
 def _build_synthetic_chat_logs(cand: Candidate, jd: JobDescriptionResponse, message_count: int) -> List[ChatMessage]:
     top_skills = ", ".join((cand.skills or [])[:2])
@@ -1322,25 +1318,30 @@ def _build_synthetic_chat_logs(cand: Candidate, jd: JobDescriptionResponse, mess
 
 def _normalize_chat_logs(raw_chat, cand: Candidate, jd: JobDescriptionResponse, message_count: int) -> List[ChatMessage]:
     fallback_logs = _build_synthetic_chat_logs(cand, jd, message_count)
-    normalized_chat_logs: List[ChatMessage] = []
+    raw_messages: List[str] = []
 
     if isinstance(raw_chat, list):
-        for item in raw_chat[:message_count]:
+        for item in raw_chat:
             if not isinstance(item, dict):
                 continue
-            sender = _normalize_chat_sender(str(item.get("sender", "")), cand.name)
             message = _compact_chat_message(str(item.get("message", "")))
             if not message:
                 continue
-            normalized_chat_logs.append(ChatMessage(sender=sender, message=message))
+            raw_messages.append(message)
+            if len(raw_messages) >= message_count:
+                break
 
-    if not normalized_chat_logs:
+    if not raw_messages:
         return fallback_logs
 
-    if len(normalized_chat_logs) < message_count:
-        normalized_chat_logs.extend(fallback_logs[len(normalized_chat_logs):message_count])
+    normalized_chat_logs: List[ChatMessage] = []
+    for index in range(message_count):
+        message = raw_messages[index] if index < len(raw_messages) else fallback_logs[index].message
+        normalized_chat_logs.append(
+            ChatMessage(sender=_expected_chat_sender(index, cand.name), message=message)
+        )
 
-    return normalized_chat_logs[:message_count]
+    return normalized_chat_logs
 
 def _build_interest_explanation(cand: Candidate, jd: JobDescriptionResponse, interest_score: int, match_score: int) -> tuple[str, List[str]]:
     factors: List[str] = []
@@ -1377,9 +1378,24 @@ def _build_interest_explanation(cand: Candidate, jd: JobDescriptionResponse, int
 
     return reason, factors[:3]
 
+def _is_low_signal_interest_text(text: str) -> bool:
+    normalized = _normalize_free_text(text)
+    if not normalized:
+        return True
+    low_signal_phrases = {
+        "basic match",
+        "basic match and remote preference",
+        "basic role match",
+        "remote preference match",
+        "good fit",
+        "seems interested",
+    }
+    return normalized in low_signal_phrases or normalized.startswith("basic match")
+
 def _normalize_interest_explanation(raw_reason, raw_factors, cand: Candidate, jd: JobDescriptionResponse, interest_score: int, match_score: int) -> tuple[str, List[str]]:
     fallback_reason, fallback_factors = _build_interest_explanation(cand, jd, interest_score, match_score)
-    reason = _compact_chat_message(str(raw_reason or ""), max_chars=240) or fallback_reason
+    raw_reason_text = _compact_chat_message(str(raw_reason or ""), max_chars=240)
+    reason = fallback_reason if _is_low_signal_interest_text(raw_reason_text) else raw_reason_text
 
     factors: List[str] = []
     if isinstance(raw_factors, list):
@@ -1389,7 +1405,7 @@ def _normalize_interest_explanation(raw_reason, raw_factors, cand: Candidate, jd
             else:
                 text = str(factor or "")
             compact = _compact_chat_message(text, max_chars=160)
-            if compact:
+            if compact and not _is_low_signal_interest_text(compact):
                 factors.append(compact)
 
     if not factors:
@@ -1421,6 +1437,7 @@ JD Work Location Preference: {jd.work_location_preference}
 Write exactly {message_count} short chat messages and assign an interest_score (0-100).
 Make it feel like a natural back-and-forth text thread: concise, realistic, and not paragraph-like.
 Alternate senders, starting with ALIGNA. Use only "ALIGNA" and "{cand.name}" as sender values.
+Odd-numbered messages must be from ALIGNA; even-numbered messages must be from {cand.name}.
 Each message should be 1-2 short sentences and under 220 characters.
 If the candidate is a weaker match, keep the conversation brief and less enthusiastic.
 Also explain the interest score with one concise interest_reason and 2-3 short interest_factors.
