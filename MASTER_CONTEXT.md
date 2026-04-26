@@ -1,9 +1,9 @@
 # MASTER_CONTEXT.md
 
-# ScoutIQ — Hackathon Master Context
+# ALIGNA — Hackathon Master Context
 
 ## Project Name
-ScoutIQ
+ALIGNA
 
 ## Tagline
 AI-Powered Talent Scouting & Engagement Agent
@@ -76,7 +76,7 @@ Optimize for:
 - Graceful synthetic fallback when both APIs fail
 
 ## Data Layer
-1. MongoDB Atlas (`scoutiq.candidates` collection)
+1. MongoDB Atlas (`aligna.candidates` collection)
 2. JSON fallback (`mock_candidates.json` — ~150 candidates)
 
 ## Deployment

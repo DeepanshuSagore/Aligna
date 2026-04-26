@@ -1,6 +1,6 @@
-# 🚀 ScoutIQ — Local Setup Guide
+# 🚀 ALIGNA — Local Setup Guide
 
-> Complete guide to run ScoutIQ on any machine for development & testing.
+> Complete guide to run ALIGNA on any machine for development & testing.
 
 ---
 
@@ -20,8 +20,8 @@ Before you start, make sure you have these installed:
 ## 📦 Step 1 — Clone the Repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/scout-iq.git
-cd scout-iq
+git clone https://github.com/YOUR_USERNAME/aligna.git
+cd aligna
 ```
 
 ---
@@ -130,7 +130,7 @@ You should see:
 
 The app uses a **fallback hierarchy** for candidate data:
 
-1. **MongoDB Atlas** — if `MONGODB_URI` is set and the `scoutiq.candidates` collection has data
+1. **MongoDB Atlas** — if `MONGODB_URI` is set and the `aligna.candidates` collection has data
 2. **`mock_candidates.json`** — local JSON file with ~150 pre-generated candidates (shipped with repo)
 
 If you don't have MongoDB set up, the app will automatically use the JSON fallback.
@@ -197,7 +197,7 @@ Make sure:
 
 ## 🚀 Deployment (Vercel Serverless)
 
-ScoutIQ is designed for **full-stack deployment on Vercel** — both the Next.js frontend and the Python FastAPI backend run as serverless functions.
+ALIGNA is designed for **full-stack deployment on Vercel** — both the Next.js frontend and the Python FastAPI backend run as serverless functions.
 
 ### Why Vercel Serverless?
 
@@ -213,7 +213,7 @@ ScoutIQ is designed for **full-stack deployment on Vercel** — both the Next.js
 2. **Import project on Vercel:**
    - Go to [vercel.com/new](https://vercel.com/new)
    - Import your GitHub repo
-   - Set root directory to `scout-iq` (if repo root is `Catalyst`)
+   - Set root directory to `aligna` (if repo root is `Catalyst`)
 
 3. **Add environment variables in Vercel dashboard:**
    - `GEMINI_API_KEY`
@@ -256,7 +256,7 @@ ScoutIQ is designed for **full-stack deployment on Vercel** — both the Next.js
 ## 📁 Project Structure
 
 ```
-scout-iq/
+aligna/
 ├── api/
 │   └── index.py              # FastAPI backend (Vercel serverless entry)
 ├── backend/
@@ -310,7 +310,7 @@ scout-iq/
 
 ```bash
 # 1. Clone & enter project
-git clone <repo-url> && cd scout-iq
+git clone <repo-url> && cd aligna
 
 # 2. Set up env
 cp .env.example .env.local

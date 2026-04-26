@@ -15,8 +15,8 @@ if not uri:
     exit(1)
 
 client = MongoClient(uri)
-# Using 'scoutiq' database
-db = client.scoutiq
+# Using 'aligna' database
+db = client.aligna
 collection = db.candidates
 
 def migrate():

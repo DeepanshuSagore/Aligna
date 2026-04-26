@@ -27,7 +27,7 @@ const fustat = Fustat({
 });
 
 export const metadata: Metadata = {
-  title: "ScoutIQ - Hire Top Talent Faster With AI Precision",
+  title: "ALIGNA - Hire Top Talent Faster With AI Precision",
   description: "AI-Powered Talent Scouting & Engagement Agent",
 };
 

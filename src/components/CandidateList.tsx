@@ -68,7 +68,7 @@ export function CandidateList({ candidates, onEngage, engagedIds }: CandidateLis
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", "scoutiq_shortlist.csv");
+    link.setAttribute("download", "aligna_shortlist.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

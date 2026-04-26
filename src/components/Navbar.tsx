@@ -28,7 +28,7 @@ export function Navbar() {
             href="/" 
             className="font-schibsted font-semibold text-2xl tracking-tight text-white hover:opacity-80 transition-opacity"
           >
-            ScoutIQ
+            ALIGNA
           </Link>
         </div>
 

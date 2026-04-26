@@ -94,15 +94,15 @@ def test_engagement_chat_normalization():
     raw_chat = [
         {"sender": "AI Recruiter", "message": long_message},
         {"sender": "Candidate", "message": "Thanks, I can take a look."},
-        {"sender": "ScoutIQ", "message": "Great, I can send the brief."},
+        {"sender": "ALIGNA", "message": "Great, I can send the brief."},
         {"sender": "Ava Chen", "message": "Please share compensation and setup."},
         {"sender": "Recruiter", "message": "Will do."},
-        {"sender": "ScoutIQ", "message": "This extra message should be trimmed."},
+        {"sender": "ALIGNA", "message": "This extra message should be trimmed."},
     ]
 
     logs = api_index._normalize_chat_logs(raw_chat, candidate, jd, 5)
     assert len(logs) == 5
-    assert logs[0].sender == "ScoutIQ"
+    assert logs[0].sender == "ALIGNA"
     assert logs[1].sender == candidate.name
     assert len(logs[0].message) <= 220
 

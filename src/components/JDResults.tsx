@@ -31,7 +31,7 @@ export function JDResults({ data }: JDResultsProps) {
             <div>
               <p className="text-base font-bold text-red-200 uppercase tracking-tight">JD Parsing Alert</p>
               <p className="text-sm text-red-100/80 leading-relaxed mt-1 font-medium">
-                {data.warning || "ScoutIQ could not automatically extract all JD fields. Matching quality may be significantly reduced."}
+                {data.warning || "ALIGNA could not automatically extract all JD fields. Matching quality may be significantly reduced."}
               </p>
               <div className="mt-3 flex items-center gap-2">
                 <span className="text-[11px] font-bold px-2 py-0.5 bg-red-500/30 text-red-100 rounded-md border border-red-500/30">

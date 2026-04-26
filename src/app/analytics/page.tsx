@@ -136,7 +136,7 @@ export default function AnalyticsPage() {
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="font-fustat text-4xl font-bold text-white">Analytics</h1>
-            <p className="mt-2 text-white/65">Live overview of the talent pool in ScoutIQ.</p>
+            <p className="mt-2 text-white/65">Live overview of the talent pool in ALIGNA.</p>
           </div>
           <div className="flex items-center gap-3">
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-white/60">

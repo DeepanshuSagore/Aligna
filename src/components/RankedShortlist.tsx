@@ -77,7 +77,7 @@ export function RankedShortlist({ candidates }: RankedShortlistProps) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", "scoutiq_ranked_shortlist.csv");
+    link.setAttribute("download", "aligna_ranked_shortlist.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -273,7 +273,7 @@ export function RankedShortlist({ candidates }: RankedShortlistProps) {
                   </div>
                   <div className="flex flex-col gap-3 ml-2">
                     {candidate.chat_logs.map((msg, i) => {
-                      const isScout = msg.sender === "ScoutIQ";
+                      const isScout = msg.sender === "ALIGNA";
                       return (
                         <div
                           key={i}

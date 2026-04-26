@@ -122,7 +122,7 @@ export function EngagementModal({ isOpen, onClose, candidate, jdData, onEngageme
           {isLoading ? (
             <div className="flex flex-col items-center justify-center h-64 gap-4">
               <Loader2 className="w-10 h-10 text-white/50 animate-spin" />
-              <p className="text-white/60 font-medium animate-pulse">ScoutIQ is chatting with the candidate...</p>
+              <p className="text-white/60 font-medium animate-pulse">ALIGNA is chatting with the candidate...</p>
             </div>
           ) : result ? (
             <div className="flex flex-col gap-6">
@@ -187,7 +187,7 @@ export function EngagementModal({ isOpen, onClose, candidate, jdData, onEngageme
               {/* Chat Log */}
               <div className="flex flex-col gap-4 mt-2">
                 {result.chat_logs.map((msg, i) => {
-                  const isScout = msg.sender === "ScoutIQ";
+                  const isScout = msg.sender === "ALIGNA";
                   return (
                     <div key={i} className={`flex gap-3 ${isScout ? "justify-start" : "justify-end"}`}>
                       {isScout && (

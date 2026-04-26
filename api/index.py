@@ -384,12 +384,12 @@ if mongo_uri:
             socketTimeoutMS=2500,
             tlsAllowInvalidCertificates=False,
         )
-        db = db_client.scoutiq
+        db = db_client.aligna
         print("MongoDB URI configured. Connection will be validated on first read.")
     except Exception as e:
         print(f"Failed to connect to MongoDB: {e}")
 
-app = FastAPI(title="ScoutIQ Backend", version="1.0.0")
+app = FastAPI(title="ALIGNA Backend", version="1.0.0")
 
 # Configure CORS
 app.add_middleware(
@@ -1275,7 +1275,7 @@ def _normalize_chat_sender(sender: str, candidate_name: str) -> str:
     normalized = (sender or "").strip()
     lowered = normalized.lower()
     if any(token in lowered for token in ("scout", "recruiter", "ai")):
-        return "ScoutIQ"
+        return "ALIGNA"
     return candidate_name
 
 def _build_synthetic_chat_logs(cand: Candidate, jd: JobDescriptionResponse, message_count: int) -> List[ChatMessage]:
@@ -1286,7 +1286,7 @@ def _build_synthetic_chat_logs(cand: Candidate, jd: JobDescriptionResponse, mess
 
     messages = [
         ChatMessage(
-            sender="ScoutIQ",
+            sender="ALIGNA",
             message=_compact_chat_message(
                 f"Hi {cand.name}, I'm reaching out about a {jd.role} role{job_context}. {skill_phrase} looked relevant."
             ),
@@ -1300,7 +1300,7 @@ def _build_synthetic_chat_logs(cand: Candidate, jd: JobDescriptionResponse, mess
             ),
         ),
         ChatMessage(
-            sender="ScoutIQ",
+            sender="ALIGNA",
             message=_compact_chat_message(
                 "Makes sense. The team is checking fit on skills, timing, compensation, and work setup before scheduling calls."
             ),
@@ -1314,7 +1314,7 @@ def _build_synthetic_chat_logs(cand: Candidate, jd: JobDescriptionResponse, mess
             ),
         ),
         ChatMessage(
-            sender="ScoutIQ",
+            sender="ALIGNA",
             message="Fair. I'll send a concise brief and a couple of optional times so you can decide.",
         ),
     ]
@@ -1404,7 +1404,7 @@ async def simulate_interest(request: SimulateInterestRequest):
     match_score = _clamp_score(cand.match_score, default=0)
     message_count = _engagement_message_count(match_score)
     
-    prompt = f"""You are a hiring simulator. Simulate a brief outreach conversation between an AI Recruiter (ScoutIQ) and a tech Candidate.
+    prompt = f"""You are a hiring simulator. Simulate a brief outreach conversation between an AI Recruiter (ALIGNA) and a tech Candidate.
 
 Candidate Profile:
 - Name: {cand.name}
@@ -1420,14 +1420,14 @@ JD Work Location Preference: {jd.work_location_preference}
 
 Write exactly {message_count} short chat messages and assign an interest_score (0-100).
 Make it feel like a natural back-and-forth text thread: concise, realistic, and not paragraph-like.
-Alternate senders, starting with ScoutIQ. Use only "ScoutIQ" and "{cand.name}" as sender values.
+Alternate senders, starting with ALIGNA. Use only "ALIGNA" and "{cand.name}" as sender values.
 Each message should be 1-2 short sentences and under 220 characters.
 If the candidate is a weaker match, keep the conversation brief and less enthusiastic.
 Also explain the interest score with one concise interest_reason and 2-3 short interest_factors.
 Return ONLY valid JSON:
 {{
     "chat_logs": [
-        {{"sender": "ScoutIQ", "message": "..."}},
+        {{"sender": "ALIGNA", "message": "..."}},
         {{"sender": "{cand.name}", "message": "..."}}
     ],
     "interest_score": <int>,
