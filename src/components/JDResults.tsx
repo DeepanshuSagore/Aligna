@@ -93,9 +93,9 @@ function InfoCard({ icon, label, value }: { icon: React.ReactNode; label: string
       <div className="p-3 bg-white/5 rounded-xl text-white/80 border border-white/10">
         {icon}
       </div>
-      <div>
-        <p className="text-[13px] font-medium text-white/50 uppercase tracking-wider mb-1">{label}</p>
-        <p className="text-[16px] font-semibold text-white truncate max-w-[150px]" title={value}>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-medium text-white/50 uppercase tracking-wider mb-1 truncate">{label}</p>
+        <p className="text-[16px] font-semibold text-white truncate" title={value}>
           {value}
         </p>
       </div>

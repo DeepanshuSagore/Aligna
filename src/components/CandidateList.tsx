@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { UserCircle2, MapPin, Briefcase, ChevronRight, Download } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { UserCircle2, MapPin, Briefcase, ChevronRight, Download, ChevronLeft } from "lucide-react";
 import { SkillPills } from "./SkillPills";
 import { ScoreExplainer, type ScoreBreakdown } from "./ScoreExplainer";
 
@@ -28,11 +28,32 @@ interface CandidateListProps {
   engagedIds?: Set<string>;
 }
 
+const ITEMS_PER_PAGE = 15;
+
 export function CandidateList({ candidates, onEngage, engagedIds }: CandidateListProps) {
   const [includeAIReason, setIncludeAIReason] = useState(false);
   const [expandedScoreId, setExpandedScoreId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
+  useEffect(() => {
+    if (expandedScoreId && itemRefs.current[expandedScoreId]) {
+      setTimeout(() => {
+        itemRefs.current[expandedScoreId]?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 100);
+    }
+  }, [expandedScoreId]);
 
   if (!candidates || candidates.length === 0) return null;
+
+  const totalPages = Math.ceil(candidates.length / ITEMS_PER_PAGE);
+  const paginatedCandidates = candidates.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   const handleExportCSV = () => {
     let csvContent = "";
@@ -103,11 +124,13 @@ export function CandidateList({ candidates, onEngage, engagedIds }: CandidateLis
       </div>
 
       <div className="flex flex-col gap-4">
-        {candidates.map((candidate, index) => {
+        {paginatedCandidates.map((candidate, idx) => {
+          const index = (currentPage - 1) * ITEMS_PER_PAGE + idx;
           const isScoreExpanded = expandedScoreId === candidate.id;
           return (
           <div 
             key={candidate.id}
+            ref={(el) => (itemRefs.current[candidate.id] = el)}
             className="group relative glassmorphism rounded-[24px] p-6 border border-white/10 hover:border-white/20 transition-all duration-300 hover:shadow-[0_15px_40px_rgba(0,0,0,0.4)] hover:-translate-y-1 flex flex-col md:flex-row gap-6 items-start md:items-center"
           >
             {/* Match Score Ring */}
@@ -210,6 +233,41 @@ export function CandidateList({ candidates, onEngage, engagedIds }: CandidateLis
           );
         })}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="mt-10 flex items-center justify-center gap-4">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="p-2 rounded-lg bg-white/5 border border-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-semibold transition-all ${
+                  currentPage === page
+                    ? "bg-[#5AE14C] text-black shadow-[0_0_15px_rgba(90,225,76,0.4)]"
+                    : "bg-white/5 border border-white/10 text-white/70 hover:bg-white/10"
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="p-2 rounded-lg bg-white/5 border border-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

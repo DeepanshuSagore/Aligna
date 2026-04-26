@@ -126,7 +126,7 @@ export function JDInputCard({ onAnalyzeText, onAnalyzeFile, isLoading }: JDInput
         
         <div className="flex items-center gap-2 text-sm font-medium text-[#d1d1d1]">
           <Sparkles className="w-4 h-4 text-white" />
-          <span>Powered by Gemini</span>
+          <span>Powered by Aligna-AI</span>
         </div>
       </div>
 

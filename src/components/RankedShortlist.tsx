@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Trophy,
   Download,
@@ -13,6 +13,8 @@ import {
   UserCircle2,
   Briefcase,
   MapPin,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { type Candidate } from "./CandidateList";
 import { ScoreExplainer } from "./ScoreExplainer";
@@ -29,13 +31,34 @@ interface RankedShortlistProps {
   candidates: EngagedCandidate[];
 }
 
+const ITEMS_PER_PAGE = 15;
+
 export function RankedShortlist({ candidates }: RankedShortlistProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
+  useEffect(() => {
+    if (expandedId && itemRefs.current[expandedId]) {
+      setTimeout(() => {
+        itemRefs.current[expandedId]?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 100);
+    }
+  }, [expandedId]);
 
   if (!candidates || candidates.length === 0) return null;
 
   // Sort by final_score descending
   const sorted = [...candidates].sort((a, b) => b.final_score - a.final_score);
+
+  const totalPages = Math.ceil(sorted.length / ITEMS_PER_PAGE);
+  const paginatedCandidates = sorted.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   const handleExportCSV = () => {
     let csvContent = "\uFEFF"; // BOM for Excel
@@ -149,7 +172,8 @@ export function RankedShortlist({ candidates }: RankedShortlistProps) {
 
       {/* Ranked Cards */}
       <div className="flex flex-col gap-4">
-        {sorted.map((candidate, index) => {
+        {paginatedCandidates.map((candidate, idx) => {
+          const index = (currentPage - 1) * ITEMS_PER_PAGE + idx;
           const tier = getTierColor(candidate.final_score);
           const isExpanded = expandedId === candidate.id;
           const interestReason = candidate.interest_reason ?? "";
@@ -158,6 +182,7 @@ export function RankedShortlist({ candidates }: RankedShortlistProps) {
           return (
             <div
               key={candidate.id}
+              ref={(el) => (itemRefs.current[candidate.id] = el)}
               className={`glassmorphism rounded-[20px] border transition-all duration-300 hover:shadow-[0_15px_40px_rgba(0,0,0,0.4)] ${
                 index === 0
                   ? "border-[#5AE14C]/30 shadow-[0_0_30px_rgba(90,225,76,0.1)]"
@@ -304,6 +329,41 @@ export function RankedShortlist({ candidates }: RankedShortlistProps) {
           );
         })}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="mt-10 flex items-center justify-center gap-4">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="p-2 rounded-lg bg-white/5 border border-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-semibold transition-all ${
+                  currentPage === page
+                    ? "bg-[#5AE14C] text-black shadow-[0_0_15px_rgba(90,225,76,0.4)]"
+                    : "bg-white/5 border border-white/10 text-white/70 hover:bg-white/10"
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="p-2 rounded-lg bg-white/5 border border-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

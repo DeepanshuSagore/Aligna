@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AuroraBackground } from "@/components/ui/AuroraBackground";
 import { Navbar } from "@/components/Navbar";
-import { Briefcase, Globe2, RefreshCw, Search, Users } from "lucide-react";
+import { Briefcase, Globe2, RefreshCw, Search, Users, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface CandidateRecord {
   id: string;
@@ -22,6 +22,8 @@ interface CandidatesResponse {
   count: number;
   candidates: CandidateRecord[];
 }
+
+const ITEMS_PER_PAGE = 15;
 
 const normalizeSearchText = (value: string) =>
   (value || "")
@@ -49,6 +51,7 @@ export default function CandidatesPage() {
   const [query, setQuery] = useState("");
   const [onlyOpenToWork, setOnlyOpenToWork] = useState(false);
   const [workModeFilter, setWorkModeFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
 
   const fetchCandidates = async () => {
     const response = await fetch("/api/candidates", { cache: "no-store" });
@@ -138,6 +141,12 @@ export default function CandidatesPage() {
     });
   }, [data, onlyOpenToWork, query, workModeFilter]);
 
+  const totalPages = Math.ceil(filteredCandidates.length / ITEMS_PER_PAGE);
+  const paginatedCandidates = filteredCandidates.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
   const openToWorkCount = useMemo(
     () => (data?.candidates ?? []).filter((candidate) => candidate.open_to_work).length,
     [data]
@@ -151,6 +160,11 @@ export default function CandidatesPage() {
       }).length,
     [data]
   );
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [query, onlyOpenToWork, workModeFilter]);
 
   return (
     <main className="relative min-h-screen overflow-x-hidden">
@@ -253,49 +267,86 @@ export default function CandidatesPage() {
           </div>
         )}
 
-        {!isLoading && !error && filteredCandidates.length > 0 && (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {filteredCandidates.map((candidate) => (
-              <article
-                key={candidate.id}
-                className="glassmorphism rounded-2xl border border-white/10 p-5 transition-colors hover:border-white/20"
-              >
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold text-white">{candidate.name}</h2>
-                    <p className="text-sm text-white/65">{candidate.role}</p>
-                  </div>
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                      candidate.open_to_work
-                        ? "border border-[#5AE14C]/30 bg-[#5AE14C]/10 text-[#5AE14C]"
-                        : "border border-white/20 bg-white/5 text-white/60"
-                    }`}
-                  >
-                    {candidate.open_to_work ? "Open" : "Passive"}
-                  </span>
-                </div>
-
-                <div className="mb-3 flex flex-wrap gap-2 text-xs text-white/70">
-                  <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">{candidate.city}</span>
-                  <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">
-                    {candidate.work_location_preference || candidate.remote_preference}
-                  </span>
-                  <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">
-                    {candidate.years_experience} YOE
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {candidate.skills.slice(0, 6).map((skill) => (
-                    <span key={`${candidate.id}-${skill}`} className="rounded-full bg-white/8 px-2.5 py-1 text-xs text-white/80">
-                      {skill}
+        {!isLoading && !error && paginatedCandidates.length > 0 && (
+          <>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {paginatedCandidates.map((candidate) => (
+                <article
+                  key={candidate.id}
+                  className="glassmorphism rounded-2xl border border-white/10 p-5 transition-colors hover:border-white/20"
+                >
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-semibold text-white">{candidate.name}</h2>
+                      <p className="text-sm text-white/65">{candidate.role}</p>
+                    </div>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        candidate.open_to_work
+                          ? "border border-[#5AE14C]/30 bg-[#5AE14C]/10 text-[#5AE14C]"
+                          : "border border-white/20 bg-white/5 text-white/60"
+                      }`}
+                    >
+                      {candidate.open_to_work ? "Open" : "Passive"}
                     </span>
+                  </div>
+
+                  <div className="mb-3 flex flex-wrap gap-2 text-xs text-white/70">
+                    <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">{candidate.city}</span>
+                    <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">
+                      {candidate.work_location_preference || candidate.remote_preference}
+                    </span>
+                    <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">
+                      {candidate.years_experience} YOE
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {candidate.skills.slice(0, 6).map((skill) => (
+                      <span key={`${candidate.id}-${skill}`} className="rounded-full bg-white/8 px-2.5 py-1 text-xs text-white/80">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="mt-10 flex items-center justify-center gap-4">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded-lg bg-white/5 border border-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <div className="flex items-center gap-2">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-semibold transition-all ${
+                        currentPage === page
+                          ? "bg-[#5AE14C] text-black shadow-[0_0_15px_rgba(90,225,76,0.4)]"
+                          : "bg-white/5 border border-white/10 text-white/70 hover:bg-white/10"
+                      }`}
+                    >
+                      {page}
+                    </button>
                   ))}
                 </div>
-              </article>
-            ))}
-          </div>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded-lg bg-white/5 border border-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </main>
