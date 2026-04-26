@@ -16,6 +16,9 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv(".env.local")
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+MOCK_CANDIDATES_PATH = os.path.join(PROJECT_ROOT, "mock_candidates.json")
+
 # Gemini model - used for JD parsing (low volume)
 GEMINI_MODEL = 'gemini-2.0-flash'
 
@@ -71,9 +74,15 @@ db_client = None
 db = None
 if mongo_uri:
     try:
-        db_client = AsyncIOMotorClient(mongo_uri)
+        db_client = AsyncIOMotorClient(
+            mongo_uri,
+            serverSelectionTimeoutMS=2500,
+            connectTimeoutMS=2500,
+            socketTimeoutMS=2500,
+            tlsAllowInvalidCertificates=False,
+        )
         db = db_client.scoutiq
-        print("Connected to MongoDB Atlas successfully.")
+        print("MongoDB URI configured. Connection will be validated on first read.")
     except Exception as e:
         print(f"Failed to connect to MongoDB: {e}")
 
@@ -257,6 +266,7 @@ class MatchResponse(BaseModel):
 
 @app.post("/api/match-candidates", response_model=MatchResponse)
 async def match_candidates(request: MatchRequest):
+    global db
     candidates_data = []
     
     if db is not None:
@@ -267,15 +277,17 @@ async def match_candidates(request: MatchRequest):
                 candidates_data.append(doc)
         except Exception as e:
             print(f"MongoDB read error: {e}")
+            print("Falling back to local mock candidates for this and future requests.")
+            db = None
             candidates_data = []
             
     # Fallback to JSON
     if not candidates_data:
         try:
-            with open("mock_candidates.json", "r") as f:
+            with open(MOCK_CANDIDATES_PATH, "r") as f:
                 candidates_data = json.load(f)
         except FileNotFoundError:
-            raise HTTPException(status_code=404, detail="No candidates found in database or mock_candidates.json")
+            raise HTTPException(status_code=404, detail=f"No candidates found in database or {MOCK_CANDIDATES_PATH}")
         
     jd = request.jd_data
     

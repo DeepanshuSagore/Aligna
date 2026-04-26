@@ -30,8 +30,19 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# python
+.venv/
+venv/
+__pycache__/
+*.pyc
+backend/.venv/
+backend/venv/
+backend/__pycache__/
+api/__pycache__/
+
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel

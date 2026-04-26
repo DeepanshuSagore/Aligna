@@ -62,23 +62,50 @@ Optimize for:
 # Tech Stack
 
 ## Frontend
-- Next.js
+- Next.js 16
 - TypeScript
-- Tailwind CSS
+- Tailwind CSS v4
 
 ## Backend
-- FastAPI
+- FastAPI (Python)
+- Served as Vercel Serverless Functions
 
 ## AI Layer
-- Gemini API
+- **Gemini API** (gemini-2.0-flash) — JD parsing & candidate explainability
+- **Groq API** (llama-3.3-70b-versatile) — Fast interest simulation (high rate limit)
+- Graceful synthetic fallback when both APIs fail
 
 ## Data Layer
-1. JSON mock dataset initially
-2. Later upgrade to MongoDB or Supabase if needed
+1. MongoDB Atlas (`scoutiq.candidates` collection)
+2. JSON fallback (`mock_candidates.json` — ~150 candidates)
 
 ## Deployment
-- Vercel (frontend)
-- Render / Railway (backend)
+- **Vercel** — Full-stack serverless (both frontend + backend)
+- Frontend: `@vercel/next`
+- Backend: `@vercel/python` (from `api/index.py`)
+- Config: `vercel.json`
+
+---
+
+# Architecture
+
+```
+User → Next.js Frontend (Vercel)
+         ↓ /api/* requests
+       FastAPI Backend (Vercel Serverless Python)
+         ↓
+       Gemini API / Groq API / MongoDB Atlas
+```
+
+## Local Development
+- Frontend: `npm run dev` → http://localhost:3000
+- Backend: `uvicorn api.index:app --host 127.0.0.1 --port 8000 --reload`
+- `next.config.ts` proxies `/api/*` → `http://127.0.0.1:8000/api/*` in dev mode
+
+## Production (Vercel)
+- `vercel.json` rewrites `/api/*` → `api/index.py` serverless function
+- No CORS issues (same origin)
+- Environment variables set in Vercel dashboard
 
 ---
 
@@ -91,56 +118,62 @@ Paste a JD -> understand needs -> find candidates -> assess interest -> ranked s
 # Current Progress Status
 
 ## Completed
-### Phase 0
-- Premium frontend UI
+### Phase 0 — Foundation
+- Premium frontend UI with glassmorphism design
 - Frontend/backend shell connected
+- Video background hero section
 
-### Phase 1
+### Phase 1 — JD Parser
 - Gemini API configured
 - FastAPI backend created
-- /parse-jd endpoint built
-- JD parser functional
+- `/api/parse-jd` endpoint (text)
+- `/api/upload-jd` endpoint (PDF)
 
-## Current Next Phase
-PHASE 6 — UX Polish & Export
+### Phase 2 — Candidate Dataset + Matching Engine
+- 150 realistic AI-generated candidates
+- Scoring engine: skills (60pts) + experience (20pts) + location/role (20pts)
+- Returns top 10 matched candidates
+
+### Phase 3 — Explainability Layer
+- Gemini generates 1-sentence explanations per candidate
+- Shows why each candidate was selected
+
+### Phase 4 — Interest Scoring Agent
+- Simulated AI outreach via Groq (primary) / Gemini (fallback)
+- 3-message chat simulation
+- Interest score (0-100) per candidate
+- Graceful synthetic fallback when APIs fail
+
+### Phase 5 — Final Ranking Engine
+- Final Score = 0.7 × Match + 0.3 × Interest
+- Ranked shortlist dashboard with tier labels (Hot Lead / Warm / Cold)
+
+### Phase 6 — UX Polish & Export
+- CSV export for shortlist
+- Engage All & Rank flow with progress bar
+- Pipeline step indicator
+- Loading states and animations
+
+### Phase 7 — Deployment & Documentation
+- Vercel serverless configuration (`vercel.json`)
+- Local setup documentation (`LOCAL_SETUP.md`)
+- Environment variable template (`.env.example`)
+- Comprehensive `.gitignore`
+
+## Current Phase
+SHIPPED — Ready for demo & deployment
 
 ---
 
-# Full Development Roadmap
+# Backend API Endpoints
 
-## Phase 0 — Foundation (DONE)
-Frontend shell + backend connection.
-
-## Phase 1 — JD Parser (DONE)
-
-## Phase 2 — Candidate Dataset + Matching Engine (DONE)
-Create 100–500 realistic candidates.
-Compare JD with candidates.
-Return top 10.
-
-## Phase 3 — Explainability Layer (DONE)
-Show why each candidate was selected.
-
-## Phase 4 — Interest Scoring Agent (DONE)
-Simulated outreach chat + interest score.
-
-## Phase 5 — Final Ranking Engine (DONE)
-Final Score = 0.7 Match + 0.3 Interest
-
-## Phase 6 — UX Polish
-Loading states, charts, export CSV, polish.
-
-## Phase 7 — Judge Wow Features
-Voice JD, PDF upload, persona fit, salary prediction.
-
----
-
-# Backend API Plan
-
-POST /parse-jd
-POST /match-candidates
-POST /simulate-interest
-POST /rank-shortlist
+| Method | Endpoint                | Description                                |
+|--------|-------------------------|--------------------------------------------|
+| GET    | `/api/health`           | Health check                               |
+| POST   | `/api/parse-jd`         | Parse JD text → structured JSON via Gemini |
+| POST   | `/api/upload-jd`        | Parse PDF JD → structured JSON via Gemini  |
+| POST   | `/api/match-candidates` | Score & rank candidates against parsed JD  |
+| POST   | `/api/simulate-interest`| Simulate AI outreach → interest score      |
 
 ---
 
@@ -161,12 +194,40 @@ POST /rank-shortlist
 
 # Demo Strategy
 
-1. Paste JD
-2. Analyze
-3. Show parsed JD
-4. Show top candidates
-5. Show interest score
-6. Export shortlist
+1. Paste JD (or use sample / upload PDF)
+2. AI parses and structures JD
+3. Show top 10 matched candidates with scores
+4. "Engage All & Rank" — AI simulates outreach for all candidates
+5. View final ranked shortlist with chat logs
+6. Export CSV
+
+---
+
+# Key Files
+
+| File | Purpose |
+|------|---------|
+| `api/index.py` | FastAPI backend (all endpoints) |
+| `src/components/Hero.tsx` | Main orchestrator component |
+| `src/components/JDInputCard.tsx` | JD input UI (text + PDF) |
+| `src/components/CandidateList.tsx` | Matched candidates display |
+| `src/components/EngagementModal.tsx` | Individual engagement modal |
+| `src/components/RankedShortlist.tsx` | Final ranked dashboard + CSV |
+| `mock_candidates.json` | Fallback candidate dataset |
+| `vercel.json` | Vercel deployment config |
+| `next.config.ts` | Dev proxy config |
+| `.env.example` | Environment variable template |
+| `LOCAL_SETUP.md` | Setup instructions |
+
+---
+
+# Environment Variables Required
+
+| Variable | Provider | Purpose |
+|----------|----------|---------|
+| `GEMINI_API_KEY` | Google AI Studio | JD parsing & explainability |
+| `MONGODB_URI` | MongoDB Atlas | Candidate database |
+| `GROQ_API_KEY` | Groq Console | Fast interest simulation |
 
 ---
 
@@ -183,10 +244,12 @@ POST /rank-shortlist
 # Current Instruction For Any AI Assistant
 
 Read this file first.
-Continue from current phase.
+The project is SHIPPED and ready for deployment.
 
-Current phase:
-PHASE 6 — UX Polish & Export
+Priorities:
+1. Keep existing features stable
+2. Fix any bugs reported
+3. Only add features if explicitly requested
 
 ---
 
