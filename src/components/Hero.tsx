@@ -16,6 +16,7 @@ export function Hero() {
   const [jdData, setJdData] = useState<JDData | null>(null);
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
+  const [selectedCandidateRank, setSelectedCandidateRank] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [pipelineStep, setPipelineStep] = useState<PipelineStep>("idle");
 
@@ -126,6 +127,8 @@ export function Hero() {
   };
 
   const handleEngage = (candidate: Candidate) => {
+    const rank = candidates?.findIndex((item) => item.id === candidate.id);
+    setSelectedCandidateRank(rank !== undefined && rank >= 0 ? rank + 1 : null);
     setSelectedCandidate(candidate);
     setIsModalOpen(true);
   };
@@ -174,10 +177,16 @@ export function Hero() {
       setEngageProgress({ current: i + 1, total: pendingCandidates.length });
 
       try {
+        const rank = candidates.findIndex((item) => item.id === candidate.id) + 1;
         const res = await fetch(`/api/simulate-interest`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ candidate, jd_data: jdData }),
+          body: JSON.stringify({
+            candidate,
+            jd_data: jdData,
+            candidate_rank: rank,
+            candidate_pool_size: candidates.length,
+          }),
         });
 
         if (!res.ok) throw new Error("Failed to simulate");
@@ -352,6 +361,8 @@ export function Hero() {
           onClose={() => setIsModalOpen(false)} 
           candidate={selectedCandidate} 
           jdData={jdData}
+          candidateRank={selectedCandidateRank}
+          candidatePoolSize={candidates?.length ?? 0}
           onEngagementComplete={handleEngagementComplete}
         />
       </div>

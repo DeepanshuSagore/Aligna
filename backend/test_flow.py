@@ -84,6 +84,10 @@ def test_engagement_message_count():
     assert api_index._engagement_message_count(75) == 5
     assert api_index._engagement_message_count(150) == 5
     assert api_index._engagement_message_count("bad") == 3
+    assert api_index._engagement_message_count(20, candidate_rank=1, candidate_pool_size=10) == 5
+    assert api_index._engagement_message_count(20, candidate_rank=3, candidate_pool_size=10) == 5
+    assert api_index._engagement_message_count(90, candidate_rank=4, candidate_pool_size=10) == 4
+    assert api_index._engagement_message_count(90, candidate_rank=8, candidate_pool_size=10) == 3
     print("✓ Engagement message count tests passed")
 
 def test_engagement_chat_normalization():

@@ -1243,6 +1243,8 @@ Example: ["Strong React/TypeScript match with 7 years experience exceeding the 4
 class SimulateInterestRequest(BaseModel):
     candidate: Candidate
     jd_data: JobDescriptionResponse
+    candidate_rank: Optional[int] = None
+    candidate_pool_size: Optional[int] = None
 
 class ChatMessage(BaseModel):
     sender: str
@@ -1255,7 +1257,22 @@ class SimulateInterestResponse(BaseModel):
     interest_reason: str = ""
     interest_factors: List[str] = []
 
-def _engagement_message_count(match_score) -> int:
+def _positive_int_or_none(value) -> Optional[int]:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+def _engagement_message_count(match_score, candidate_rank: Optional[int] = None, candidate_pool_size: Optional[int] = None) -> int:
+    rank = _positive_int_or_none(candidate_rank)
+    if rank is not None:
+        if rank <= 3:
+            return 5
+        if rank <= 7:
+            return 4
+        return 3
+
     score = _clamp_score(match_score, default=0)
     if score < 55:
         return 3
@@ -1418,7 +1435,12 @@ async def simulate_interest(request: SimulateInterestRequest):
     cand = request.candidate
     jd = request.jd_data
     match_score = _clamp_score(cand.match_score, default=0)
-    message_count = _engagement_message_count(match_score)
+    message_count = _engagement_message_count(match_score, request.candidate_rank, request.candidate_pool_size)
+    rank_context = (
+        f"{request.candidate_rank} of {request.candidate_pool_size}"
+        if request.candidate_rank and request.candidate_pool_size
+        else "Not provided"
+    )
     
     prompt = f"""You are a hiring simulator. Simulate a brief outreach conversation between an AI Recruiter (ALIGNA) and a tech Candidate.
 
@@ -1430,11 +1452,13 @@ Candidate Profile:
 - Remote Preference: {cand.remote_preference}
 - Work Location Preference: {cand.work_location_preference}
 - Match Score: {cand.match_score}/100
+- Shortlist Rank: {rank_context}
 
 Job: {jd.role} in {jd.location}
 JD Work Location Preference: {jd.work_location_preference}
 
 Write exactly {message_count} short chat messages and assign an interest_score (0-100).
+Conversation length is based on shortlist rank, so higher-ranked candidates get a little more conversation even if their raw score is modest.
 Make it feel like a natural back-and-forth text thread: concise, realistic, and not paragraph-like.
 Alternate senders, starting with ALIGNA. Use only "ALIGNA" and "{cand.name}" as sender values.
 Odd-numbered messages must be from ALIGNA; even-numbered messages must be from {cand.name}.

@@ -10,6 +10,8 @@ interface EngagementModalProps {
   onClose: () => void;
   candidate: Candidate | null;
   jdData: JDData | null;
+  candidateRank?: number | null;
+  candidatePoolSize?: number;
   onEngagementComplete?: (candidateId: string, result: {
     interest_score: number;
     final_score: number;
@@ -32,7 +34,15 @@ interface SimulationResult {
   interest_factors: string[];
 }
 
-export function EngagementModal({ isOpen, onClose, candidate, jdData, onEngagementComplete }: EngagementModalProps) {
+export function EngagementModal({
+  isOpen,
+  onClose,
+  candidate,
+  jdData,
+  candidateRank,
+  candidatePoolSize,
+  onEngagementComplete,
+}: EngagementModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<SimulationResult | null>(null);
 
@@ -50,7 +60,12 @@ export function EngagementModal({ isOpen, onClose, candidate, jdData, onEngageme
         const res = await fetch(`/api/simulate-interest`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ candidate, jd_data: jdData }),
+          body: JSON.stringify({
+            candidate,
+            jd_data: jdData,
+            candidate_rank: candidateRank,
+            candidate_pool_size: candidatePoolSize,
+          }),
         });
 
         if (!res.ok) throw new Error("Failed to simulate");
@@ -85,7 +100,7 @@ export function EngagementModal({ isOpen, onClose, candidate, jdData, onEngageme
     return () => {
       isCancelled = true;
     };
-  }, [isOpen, candidate, jdData, onEngagementComplete]);
+  }, [isOpen, candidate, jdData, candidateRank, candidatePoolSize, onEngagementComplete]);
 
   if (!isOpen || !candidate) return null;
 
